@@ -33,8 +33,11 @@ public:
 private:
 	// Wraps an OpenGL VertexArrayObject (VAO)
 	QOpenGLVertexArrayObject	m_vao;
-	// Vertex buffer (only positions now).
+    // Vertex buffer
     QOpenGLBuffer				m_vbo;
+    // Index buffer
+    QOpenGLBuffer               m_ibo;
+
 
 	// Holds the compiled shader programs.
 	QOpenGLShaderProgram		*m_program;
