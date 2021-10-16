@@ -13,11 +13,8 @@ Source code is based on Qt Example OpenGLWindow, but has been simplified a lot.
 
 #include "OpenGLWindow.h"
 
-#include <QtCore/QCoreApplication>
-
-#include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLPaintDevice>
-#include <QtGui/QPainter>
+#include <QCoreApplication>
+#include <QOpenGLContext>
 
 OpenGLWindow::OpenGLWindow(QWindow *parent) :
 	QWindow(parent),

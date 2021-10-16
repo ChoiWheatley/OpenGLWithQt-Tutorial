@@ -10,10 +10,15 @@ License    : BSD License,
 ************************************************************************************/
 
 #include "TriangleWindow.h"
+#include <vector>
 
 #include <QDebug>
 #include <QColor>
-#include <vector>
+#include <QTimer>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 TriangleWindow::TriangleWindow() :
 	m_program(nullptr)
@@ -39,10 +44,13 @@ TriangleWindow::~TriangleWindow() {
 
 void TriangleWindow::initialize() {
 	// this function is called once, when the window is first shown, i.e. when
-    // _the the window content is first rendered
-
 	// build and compile our shader program
     // ------------------------------------------------------------------
+
+    QTimer *timer = new QTimer(this);
+    // add update request to next VSync
+    QObject::connect(timer, &QTimer::timeout, this, &TriangleWindow::requestUpdate);
+    timer->start(10);
 
 	m_program = new QOpenGLShaderProgram();
 
@@ -162,7 +170,10 @@ void TriangleWindow::initialize() {
 
 void TriangleWindow::render() {
     // This function is called for every frame to be rendered on screen
+    // _the the window content is first rendered
     // ------------------------------------------------------------------
+    static int frame = 0;
+
     const qreal retinaScale = devicePixelRatio();       // needed for Macs with retina display
     glViewport(0,0,width() * retinaScale, height() * retinaScale);      // set the viewport
 
@@ -172,11 +183,35 @@ void TriangleWindow::render() {
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+
+    // Let us make vertices Transform!
+    glm::mat4 trans_comp = glm::mat4(1.0f);     // Identity matrix 4x4
+    // combine those matrices, multiplying each transformations one by one, right to left
+    trans_comp = glm::rotate(trans_comp, glm::radians(static_cast<float>(frame)), glm::vec3(0.0,0.0,1.0));
+    trans_comp = glm::rotate(trans_comp, glm::radians(static_cast<float>(frame)), glm::vec3(0.0,1.0,0.0));
+    trans_comp = glm::rotate(trans_comp, glm::radians(static_cast<float>(frame)), glm::vec3(1.0,0.0,0.0));
+    trans_comp = glm::scale(trans_comp, glm::vec3(0.5,0.5,0.5));
+    // homogeneous coordinate system makes non-linear function 'translation' linear
+    trans_comp = glm::translate(trans_comp, glm::vec3(
+                                    glm::sin(glm::radians(static_cast<float>(frame)))
+                                    , 0.0f
+                                    , 0.0) );
+    trans_comp = glm::translate(trans_comp, glm::vec3(
+                                    0.0f
+                                    , glm::sin(glm::radians(static_cast<float>(frame)))
+                                    , 0.0) );
+
+
     // use our shader program
     m_program->bind();
     // bind the vao, which in turn binds the vbo and sets the attribute buffer in the opengl context
     m_vao.bind();
     m_ibo.bind();
+
+    // Get their uniform location and set matrix (using glm::value_ptr)
+    unsigned int transform_loc = glGetUniformLocation(m_program->programId(), "transform");
+    glUniformMatrix4fv(transform_loc, 1, GL_FALSE, glm::value_ptr(trans_comp));
+
 
     // Now draw the two triangles via index drawing
     glDrawElements(GL_TRIANGLES         // mode
@@ -186,4 +221,7 @@ void TriangleWindow::render() {
 
     // Finally, release(=unbind) vao again
     m_vao.release();
+
+    frame = (frame+1) % 360;
+    qDebug() << frame;
 }
