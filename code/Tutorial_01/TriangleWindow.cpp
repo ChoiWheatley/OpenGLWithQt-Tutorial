@@ -20,17 +20,17 @@ TriangleWindow::TriangleWindow() :
 
 
 TriangleWindow::~TriangleWindow() {
-	// resource cleanup
+    // resource cleanup
+    // --------------------------
 
-	// since we release resources related to an OpenGL context,
-	// we make this context current before cleaning up our resources
-	bool success = m_context->makeCurrent(this);
-	if (!success)
-		qDebug() << "Cannot make OpenGL context current.";
+    // Since we release resources related to an opengl context,
+    // -we make this context current before cleaning up our resources
+    m_context->makeCurrent(this);
 
-	m_vao.destroy();
-	m_vertexBufferObject.destroy();
-	delete m_program;
+    m_vao.destroy();
+    m_vbo.destroy();
+    delete m_program;
+
 }
 
 
@@ -63,56 +63,59 @@ void TriangleWindow::initialize() {
 		 0.0f,  0.5f, 0.0f
 	};
 
-	// create a new buffer for the vertices
-	m_vertexBufferObject = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer); // VBO
-	m_vertexBufferObject.create(); // create underlying OpenGL object
-	m_vertexBufferObject.setUsagePattern(QOpenGLBuffer::StaticDraw); // must be called before allocate
+    // create a new buffer for the vertices
+    m_vbo = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);      // create VBO
+    m_vbo.create();
+    m_vbo.setUsagePattern(QOpenGLBuffer::StaticDraw);        // will be used in `allocate()`
 
-	m_vertexBufferObject.bind(); // set it active in the context, so that we can write to it
-	// int bufSize = sizeof(vertices) = 9 * sizeof(float) = 9*4 = 36 bytes
-	m_vertexBufferObject.allocate(vertices, sizeof(vertices) ); // copy data into buffer
+    m_vbo.bind();    // Set it active in the context, so that we can write to it
+    // int bufSize = sizeof(vertices) = 9*sizeof(float) = 9*4=36bytes
+    // static array with 9 floats(3x3 vectors) is first defined.
+    m_vbo.allocate(vertices, sizeof(vertices));      // Copy data into buffer
 
-	// Initialize the Vertex Array Object (VAO) to record and remember subsequent attribute assocations with
-	// generated vertex buffer(s)
-	m_vao.create(); // create underlying OpenGL object
-	m_vao.bind(); // sets the Vertex Array Object current to the OpenGL context so it monitors attribute assignments
-
-	// now all following enableAttributeArray(), disableAttributeArray() and setAttributeBuffer() calls are
-	// "recorded" in the currently bound VBA.
-
-	// Enable attribute array at layout location 0
-	m_program->enableAttributeArray(0);
-	m_program->setAttributeBuffer(0, GL_FLOAT, 0, 3);
-	// This maps the data we have set in the VBO to the "position" attribute.
-	// 0 - offset - means the "position" data starts at the begin of the memory array
-	// 3 - size of each vertex (=vec3) - means that each position-tuple has the size of 3 floats (those are the 3 coordinates,
-	//     mind: this is the size of GL_FLOAT, not the size in bytes!
+    // Initialize the VAO to record and remember subsequent attribute associations with
+    // generated vertex buffers
+    m_vao.create();     // create underlying opengl obj
+    m_vao.bind();       // sets the VAO current to the opengl context so it monitors
+                        // attribute assignments
+    // Now, all following calls are `recorded` in the currently bound VAO
+    // Enable attribute array at layout location 0
+    // In vertex shader, we have seen the code `layout (location = 0) in vec3 position`
+    m_program->enableAttributeArray(0);
+    m_program->setAttributeBuffer(0             // location is equal to 0
+                                  , GL_FLOAT    // type
+                                  , 0           // offset: in the currently bound vertex buffer
+                                  , 3           // tuple_size: the number components per index
+                                  , 0);         // stride: vertices are densely packed in the value array
 
 	// Release (unbind) all
-	m_vertexBufferObject.release();
+    m_vbo.release();
 	m_vao.release();
 }
 
 
 void TriangleWindow::render() {
-	// this function is called for every frame to be rendered on screen
-	const qreal retinaScale = devicePixelRatio(); // needed for Macs with retina display
-	glViewport(0, 0, width() * retinaScale, height() * retinaScale);
+    // This function is called for every frame to be rendered on screen
+    // ----------------------
+    const qreal retinaScale = devicePixelRatio();       // needed for Macs with retina display
+    glViewport(0,0,width() * retinaScale, height() * retinaScale);      // set the viewport
 
-	// set the background color = clear color
-	glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
+    // set the background color = clear color
+    // As long as the background color does not change, you could also move this call to
+    // -initialization
+    glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-	// use our shader program
-	m_program->bind();
-	// bind the vertex array object, which in turn binds the vertex buffer object and
-	// sets the attribute buffer in the OpenGL context
-	m_vao.bind();
-	// now draw the triangles:
-	// - GL_TRIANGLES - draw individual triangles
-	// - 0 index of first triangle to draw
-	// - 3 number of vertices to process
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-	// finally release VAO again (not really necessary, just for completeness)
-	m_vao.release();
+    // use our shader program
+    m_program->bind();
+    // bind the vao, which in turn binds the vbo and sets the attribute buffer in the opengl context
+    m_vao.bind();
+
+    // Now, draw the triangles
+    glDrawArrays(GL_TRIANGLES   // draw individual triangles
+                 , 0            // index of first triangle to draw
+                 , 3);          // number of vertices to process
+
+    // Finally, release(=unbind) vao again
+    m_vao.release();
 }

@@ -14,8 +14,8 @@ Source code is based on Qt Example OpenGLWindow, but has been simplified a lot.
 #ifndef OpenGLWindow_H
 #define OpenGLWindow_H
 
-#include <QtGui/QWindow>
-#include <QtGui/QOpenGLFunctions>
+#include <QWindow>
+#include <QOpenGLFunctions>
 
 QT_BEGIN_NAMESPACE
 class QOpenGLContext;
@@ -26,8 +26,8 @@ class OpenGLWindow : public QWindow, protected QOpenGLFunctions {
 public:
 	explicit OpenGLWindow(QWindow *parent = nullptr);
 
-	virtual void render() = 0;
-	virtual void initialize() = 0;
+    virtual void render() = 0;      // from QOpenGLFunctions
+    virtual void initialize() = 0;  // from QOpenGLFunctions
 
 public slots:
 	void renderLater();

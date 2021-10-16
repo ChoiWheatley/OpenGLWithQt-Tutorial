@@ -27,14 +27,14 @@ public:
 	TriangleWindow();
 	~TriangleWindow() Q_DECL_OVERRIDE;
 
-	void initialize() Q_DECL_OVERRIDE;
+    void initialize() Q_DECL_OVERRIDE;
 	void render() Q_DECL_OVERRIDE;
 
 private:
 	// Wraps an OpenGL VertexArrayObject (VAO)
 	QOpenGLVertexArrayObject	m_vao;
 	// Vertex buffer (only positions now).
-	QOpenGLBuffer				m_vertexBufferObject;
+    QOpenGLBuffer				m_vbo;
 
 	// Holds the compiled shader programs.
 	QOpenGLShaderProgram		*m_program;
