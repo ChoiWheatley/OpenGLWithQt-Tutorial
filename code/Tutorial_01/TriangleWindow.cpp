@@ -185,21 +185,18 @@ void TriangleWindow::render() {
 
 
     // Let us make vertices Transform!
-    glm::mat4 trans_comp = glm::mat4(1.0f);     // Identity matrix 4x4
+    glm::mat4 model = glm::mat4(1.0f);      // model matrix
+    glm::mat4 view = glm::mat4(1.0f);       // view matrix
+    glm::mat4 proj;                         // projection matrix
     // combine those matrices, multiplying each transformations one by one, right to left
-    trans_comp = glm::rotate(trans_comp, glm::radians(static_cast<float>(frame)), glm::vec3(0.0,0.0,1.0));
-    trans_comp = glm::rotate(trans_comp, glm::radians(static_cast<float>(frame)), glm::vec3(0.0,1.0,0.0));
-    trans_comp = glm::rotate(trans_comp, glm::radians(static_cast<float>(frame)), glm::vec3(1.0,0.0,0.0));
-    trans_comp = glm::scale(trans_comp, glm::vec3(0.5,0.5,0.5));
-    // homogeneous coordinate system makes non-linear function 'translation' linear
-    trans_comp = glm::translate(trans_comp, glm::vec3(
-                                    glm::sin(glm::radians(static_cast<float>(frame)))
-                                    , 0.0f
-                                    , 0.0) );
-    trans_comp = glm::translate(trans_comp, glm::vec3(
-                                    0.0f
-                                    , glm::sin(glm::radians(static_cast<float>(frame)))
-                                    , 0.0) );
+    model = glm::rotate(model, glm::radians(static_cast<float>(frame)), glm::vec3(1.0f,0.0f,0.0f));
+    // view matrix does exactly oppsite than we are thinking
+    view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
+    // We want to use perspect projection for our scene so we'll declare the projection matrix like this
+    proj = glm::perspective(glm::radians(45.0f)                     // FOV of frustum
+                            , 800.0f / 600.0f                       // aspect ratio
+                            , 0.1f                                  // near plane
+                            , 100.0f);                              // far plane
 
 
     // use our shader program
@@ -209,8 +206,12 @@ void TriangleWindow::render() {
     m_ibo.bind();
 
     // Get their uniform location and set matrix (using glm::value_ptr)
-    unsigned int transform_loc = glGetUniformLocation(m_program->programId(), "transform");
-    glUniformMatrix4fv(transform_loc, 1, GL_FALSE, glm::value_ptr(trans_comp));
+    int model_loc = glGetUniformLocation(m_program->programId(), "model");
+    int view_loc = glGetUniformLocation(m_program->programId(), "view");
+    int proj_loc = glGetUniformLocation(m_program->programId(), "proj");
+    glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm::value_ptr(proj));
 
 
     // Now draw the two triangles via index drawing
@@ -223,5 +224,5 @@ void TriangleWindow::render() {
     m_vao.release();
 
     frame = (frame+1) % 360;
-    qDebug() << frame;
+    // qDebug() << frame;
 }
