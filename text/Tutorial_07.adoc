@@ -1,0 +1,546 @@
+:math:
+:imagesdir: ./images
+:imagesoutdir: generated_images
+:stem: latexmath
+
+= Tutorial 07: Markieren/Auswählen von Flächen
+
+In diesem Tutorial geht es darum, Flächen bzw. Objekte in der Scene auszuwählen.
+
+.Tutorial_07, Visualisierung eines Bildschirmstrahls
+image::Tutorial_07_RayTracking.png[Tutorial_07,pdfwidth=8cm]
+
+[NOTE]
+====
+Quelltext für dieses Tutorial liegt im github repo:  https://github.com/ghorwin/OpenGLWithQt-Tutorial/tree/master/code/Tutorial_07[Tutorial_07]
+====
+
+Es gibt für das Markieren/Auswählen von Objekten und Flächen eigentlich nur grundlegende Techniken:
+
+- Strahlenverfolgung (Ray Picking), d.h. Bestimmung der Sichtlinie im Weltenkoordinatensystem und dann Schnittpunktberechnung aller Objekte und Sortierung nach Tiefe.
+- Rendern in einen offscreen-Framenbuffer mit individuellen Farben aller anklickbaren Objekte und Identifizierung der Objekte durch Abbildung der Farben auf originale Objekte/Flächen.
+
+== Option 1: Strahlenverfolgung
+
+Der Grundgedanke ist einfach: Die Mausposition im lokalen Fenster umrechnen in Weltkoordinaten und entlang dieser Linie alle Schnittpunkte mit auswählbaren Objekten finden. Das näheste Objekte zum Betrachter ist dann das ausgewählte Objekt. 
+
+Die Welt (in der perspektivischen Darstellung) hat eine _near plane_ und eine _far plane_. Alles davor und dahinter wird geklippt und nicht dargestellt. Daher kann hier auch nichts sinnvoll ausgewählt werden. Der Betrachter schaut durch die _near plane_ hindurch auf die Scene, und der Blickstrahl trifft irgendwo hinten auf die _far plane_. Da der Blickstrahl senkrecht zum Bildschirmoberfläche steht, sieht man die Linie selbst nur als Punkt.
+
+Die Berechnung ist hinreichend trivial:
+
+. Globale Mauskoordinaten von `QCursor::pos()` in lokale Mauskoordinaten umrechnen (mittels https://doc.qt.io/qt-5/qwidget.html#mapFromGlobal[QWindow::mapFromGlobal()] )
+
+. Mausposition des lokalen Fensters in Normalized Device Coordinates (NDC) umrechnen. Dabei hilft sich vorzustellen, dass das Fenster das normalisierte x-y-Koordinatensystem beinhaltet, mit dem Mittelpunkt genau in der Mitte des Fensters und der Ausdehnung -1..1 in beide Achsen. Wenn man also genau in die Mitte klickt, ist das 0,0 in NDC. Ganz oben links geklickt ist das -1,1 (y-Achse zeigt nach oben in NFC). Die z-Koordinate ist -1 für die _far plane_ und 1 für die _near plane_. W-Komponente auf 1 setzen.
+
+. Model2Projection-Matrix (also Produkt aller Transformationsmatrizen) invertieren
+. Beide Punkte mit der inversen Matrix transformieren
+
+Fertig. Hier ist der Quelltext:
+
+.SceneView.cpp:pick()
+[source,c++]
+----
+void SceneView::pick(const QPoint & globalMousePos) {
+	// local mouse coordinates
+	QPoint localMousePos = mapFromGlobal(globalMousePos);
+	int my = localMousePos.y();
+	int mx = localMousePos.x();
+
+	// viewport dimensions
+	const qreal retinaScale = devicePixelRatio(); // needed for Macs with retina display
+	qreal vpw = width()*retinaScale;
+	qreal vph = height()*retinaScale;
+
+	// invert world2view matrix, with m_worldToView = m_projection * m_camera.toMatrix() * m_transform.toMatrix();
+	bool invertible;
+	QMatrix4x4 projectionMatrixInverted = m_worldToView.inverted(&invertible);
+	if (!invertible) {
+		qWarning()<< "Cannot invert projection matrix.";
+		return;
+	}
+
+	// mouse position in NDC space, one point on near plane and one point on far plane
+	float halfVpw = vpw/2.0;
+	float halfVph = vph/2.0;
+	QVector4D near(
+				(mx - halfVpw) / halfVpw,
+				-1*(my - halfVph) / halfVph,
+				-1,
+				1.0);
+
+	QVector4D far(
+				near.x(),
+				near.y(),
+				1,
+				1.0);
+
+	// transform from NDC to model coordinates
+	QVector4D nearResult = projectionMatrixInverted*near;
+	QVector4D farResult = projectionMatrixInverted*far;
+	// don't forget normalization!
+	nearResult /= nearResult.w();
+	farResult /= farResult.w();
+
+	// update pick line vertices (visualize pick line)
+	m_context->makeCurrent(this);
+	m_pickLineObject.setPoints(nearResult.toVector3D(), farResult.toVector3D());
+}
+----
+
+Ganz am Ende wird noch ein neu eingeführtes OpenGL-Zeichenobjekt aktualisiert. Nach der Lektüre von _Tutorial 05_ sollte der Quelltext in `PickLineObject.*` selbsterklärend sein. Diese Objekt nutzt übrigends den gleichen Vertex- und Fragmentshader wie er für die Boxen eingesetzt wird.
+
+=== Erkennung von Mausklick-Ereignissen
+
+Bisher wurde mit dem Eingabemanager das Gedrückthalten der rechten Maustaste behandelt. Nun soll aber darauf reagiert werden, dass die linke Maustaste geklickt wurde (Linksklick=Auswahl). Das macht man am besten, indem man auf das Loslassen der Maustaste wartet. Gleichzeitig muss man sich dann aber die Position der Maus beim Loslassen merken, da die Maus ja hinterher noch bewegt werden kann.
+
+Der Eingabemanager hat ja, wie in _Tutorial 05_ erklärt, für Tasten (einschließlich Maustasten) einen Zustand "Wurde gedrückt". Den kann man nun einfach abfragen, z.B. in `SceneView::checkInput()`:
+
+.SceneView::checkInput()
+[source,c++]
+----
+void SceneView::checkInput() {
+	// this function is called whenever _any_ key/mouse event was issued
+
+    ....
+
+	// has the left mouse butten been release
+	if (m_keyboardMouseHandler.buttonReleased(Qt::LeftButton)) {
+		m_inputEventReceived = true;
+		renderLater();
+		return;
+	}
+
+    ....
+}
+----
+
+Die Funktion `KeyboardMouseHandler::buttonReleased(btn)` macht dabei nichts weiter, als zu prüfen, ob der Status der Taste auf `KeyboardMouseHandler::StateWasPressed` steht.
+
+In der selben Art und Weise, wie auf andere Tastendrücke und Mausbewegungen reagiert wurde, kann man nun die Auswahlroutine anstoßen:
+
+.SceneView::processInput()
+[source,c++]
+----
+void SceneView::processInput() {
+    ....
+    
+	// check for picking operation
+	if (m_keyboardMouseHandler.buttonReleased(Qt::LeftButton)) {
+		pick(m_keyboardMouseHandler.mouseReleasePos());
+	}
+
+	// finally, reset "WasPressed" key states
+	m_keyboardMouseHandler.clearWasPressedKeyStates();
+
+    ....
+}
+----
+
+Wichtig ist hier vielleicht nur, dass man abschließend auch die Flags der Maustasten zurücksetzt.
+
+Mit dem derzeitigen Quelltextstand kann man nun wild in der Scene herumklicken, wobei man natürlich erstmal nichts sieht. Erst bei Bewegung in der Scene wird die nun visualisierte Sichtgerade erkennbar - bis zum nächsten Linksklick.
+
+=== Finden von angeklickten Objekten
+
+Die zweite, auch nicht sonderlich komplizierte Aufgabe besteht darin, alle Objekte zu finden, die von der Sichtlinie geschnitten werden. Wenn es sich hierbei um Flächen handelt, ist das recht einfache Mathematik aus dem Tafelwerk (siehe https://de.wikipedia.org/wiki/Analytische_Geometrie[Wikipedia]).
+
+====
+
+*Mathematische Grundlagen*
+
+Ich schreibe die Mathematik hier nochmal kurz auf (aber nur um zu testen, wie man mit Asciidoctor ordentliche Gleichungen hinbekommt :-) )
+
+Ebenengleichung in Normalenform, mit *a* als Bezugspunkt der Ebene und *n* als Normalenvektor:
+
+[latexmath] 
+++++
+(\boldsymbol{x}-\boldsymbol{a}) \cdot \boldsymbol{n} = 0
+++++
+
+Geradengleichung, mit *d* als Richtung und *s* als Startpunkt:
+
+[latexmath] 
+++++
+\boldsymbol{x} = \boldsymbol{s} + t \, \boldsymbol{d} 
+++++
+
+Einsetzen und Ausmultiplizieren ergibt:
+
+[latexmath] 
+++++
+t_0 = \frac{\left( \boldsymbol{a} - \boldsymbol{s}\right) \cdot \boldsymbol{n}}{\boldsymbol{d} \cdot \boldsymbol{n}}
+++++
+
+Falls der Richtungsvektor der Geraden *d* und der Normalenvektor *n* senkrecht aufeinanderstehen wird der Nenner zu 0, d.h. die Gerade liegt parallel zur Ebene (entweder neben oder in der Ebene, ist uns aber hier egal). Dann soll es keinen Schnittpunkt geben. 
+
+Auch wenn Normalenvektor und Sichtgeradenvektor in die gleiche Richtung zeigen, soll kein Schnittpunkt berechnet werden (man würde ja sonst auf die Rückseite einer Fläche klicken).
+
+Damit hätte man das erste Prüfkriterium (Bedingung 1):
+[latexmath] 
+++++
+\boldsymbol{d} \cdot \boldsymbol{n} < 0
+++++
+
+Ob eine begrenzte _Fläche_ von der _Strecke_ (unserer Sichtlinie) geschnitten wird, hängt von der Lage des Schnittpunkts ab.
+
+Die Sichtgerade definiert die Strecke zwischen _near plane_ und _far plane_, d.h. die Sichtlinie wird durch den Start- und Endpunkt *p1* und *p2* (near und far-Punkte) definiert, und damit *s* = *p1* und *d* = *p2* - *p1*. Bei einem Schnittpunkt hinter uns ist *t_0 < 0* und einem Schnittpunkt hinter der _far plane_ wäre *t_0 > 1* (was man nicht sieht, kann man auch nicht anklicken). Damit hätte man das zweite Prüfkriterium (Bedingung 2):
+[latexmath] 
+++++
+0 \le t_0 \le 1
+++++
+
+Der berechnete Schnittpunkt
+
+[latexmath] 
+++++
+\boldsymbol{x_0} = \boldsymbol{s} + t_0 \, \boldsymbol{d} 
+++++
+
+liegt in der Ebene. Man kann nun die Ebenengleichung in Parameterform schreiben und die Parameter für den Schnittpunkt bestimmen. Wiederum definieren wir die Ebene über die Eckpunkte, hier *a*, *b* und *c*:
+
+[latexmath] 
+++++
+\boldsymbol{x} = \boldsymbol{a} + r\, (\boldsymbol{b} - \boldsymbol{a}) + s\, (\boldsymbol{c} - \boldsymbol{a})
+++++
+
+Der Normalenvektor für die Schnittpunktberechnung oben ist dann:
+
+[latexmath] 
+++++
+\boldsymbol{n} = (\boldsymbol{b} - \boldsymbol{a}) \times (\boldsymbol{c} - \boldsymbol{a})
+++++
+
+Nach Einsetzen und Auflösen nach _r_ und _s_ kann man prüfen, ob sowohl _r_ als auch _s_ zwischen 0 und 1 liegen (Bedingung 3).
+====
+
+Nachdem nun die Mathematik klar ist, hier nochmal die Zusammenfassung des Angeklickt-Prüf-Algorithmus:
+
+- (Vorberechnung: Normalenvektoren, Seitenvektoren der Flächen)
+- Prüfung ob Sichtgeradenvektor und Normalenvektor der Ebene zueinander zeigen (Skalarprodukt der Vektoren liefert (absoluten) Winkel < 90°) (damit ist auch der Fall "Gerade liegt parallel zur Ebene" ausgeschlossen)
+- Berechnung Schnittpunkt (Geradenfaktor _t_) und Test, ob im Interval [ 0..1]
+- Berechnung Punkt in Ebene (Faktoren _r_ und _s_) und Test, ob im Interval [0..1]
+
+[NOTE]
+====
+Falls statt einer rechteckigen Ebene ein Dreieck getestet wird, so muss bei der Schnittpunktprüfung gelten: 
+
+latexmath:[r \ge 0], latexmath:[s \ge 0] und latexmath:[r + s \le 1]
+====
+
+=== Die pick-Implementierung
+
+Die Funktion `pick()` oben wird um den Aufruf der eigentlichen Auswahl-/Markierfunktion erweitert:
+
+.SceneView.cpp::pick()
+[source,c++]
+----
+void SceneView::pick(const QPoint & globalMousePos) {
+    ....
+
+	// now do the actual picking - for now we implement a selection
+	selectNearestObject(nearResult.toVector3D(), farResult.toVector3D());
+}
+----
+
+Die Funktion `selectNearestObject()` wird mit Start- und Endpunkt der Sichtlinie aufgerufen und ist selbst auch recht kompakt:
+
+.SceneView.cpp::selectNearestObject()
+[source,c++]
+----
+void SceneView::selectNearestObject(const QVector3D & nearPoint, const QVector3D & farPoint) {
+	QElapsedTimer pickTimer;
+	pickTimer.start();
+
+	// compute view direction
+	QVector3D d = farPoint - nearPoint;
+
+	// create pick object, distance is a value between 0 and 1, 
+	// so initialize with 2 (very far back) to be on the safe side.
+	PickObject p(2.f, std::numeric_limits<unsigned int>::max());
+
+	// now process all objects and update p to hold the closest hit
+	m_boxObject.pick(nearPoint, d, p);
+	// ... other objects
+
+	// any object accepted a pick?
+	if (p.m_objectId == std::numeric_limits<unsigned int>::max())
+		return; // nothing selected
+
+	qDebug().nospace() << "Pick successful (Box #"
+					   << p.m_objectId <<  ", Face #" << p.m_faceId << ", t = " << p.m_dist << ") after "
+					   << pickTimer.elapsed() << " ms";
+
+	// Mind: OpenGL-context must be current when we call this function!
+	m_boxObject.highlight(p.m_objectId, p.m_faceId);
+}
+----
+
+Zum Testen der Performance hab ich in die Funktion einen Timer reingelegt (siehe Kapitel _Picking Performance_ unten). Den Timer und die `qDebug()`-Ausgabe kann man aber getrost rauswerfen.
+
+In der Funktion wird zuerst der Linienvektor *d* berechnet. Dann wird ein `PickObject` (eine Struktur mit Infos über angeklickte Objekte) erstellt und deren Entfernungswert ganz weit hinten initialisiert (Wertebereich ist 0..1, daher ist 2 definitiv weit genug hinten :-). Dann geht man alle Zeichenobjekte durch (bzw. alle Datenstrukturen, die Modellgeometrien enthalten) und testet alle enthaltenen Flächen auf Kollision mit dem Sichtstrahl. In diesem Tutorial gibt es nur ein Zeichenobjekt (`m_boxObject`), aber das Schema ist klar.
+
+Hinterher kann man über Vergleich der Objekt-ID mit dem Initialisierungswert (hier größter `unsigned int`) prüfen, ob überhaupt eine Fläche getroffen wurde.
+
+Und zuletzt kann man durch Aufruf der Funktion `BoxObject::highlight()` noch das angeklickte Objekt hervorheben (siehe Abschnitt _Einfärben ausgewählter Objekte_ weiter unten).
+
+Die ganze Arbeit der Kollisionsprüfung erfolgt und `BoxObject::pick()` und davon aufgerufenen Funktionen:
+
+.BoxObject.cpp::pick()
+[source,c++]
+----
+void BoxObject::pick(const QVector3D & p1, const QVector3D & d, PickObject & po) const {
+	// now process all box objects
+	for (unsigned int i=0; i<m_boxes.size(); ++i) {
+		const BoxMesh & bm = m_boxes[i];
+		for (unsigned int j=0; j<6; ++j) {
+			float dist;
+			// is intersection point closes to viewer than previous intersection points?
+			if (bm.intersects(j, p1, d, dist)) {
+				qDebug() << QString("Plane %1 of box %2 intersects line at normalized distance = %3").arg(j).arg(i).arg(dist);
+				// keep objects that is closer to near plane
+				if (dist < po.m_dist) {
+					po.m_dist = dist;
+					po.m_objectId = i;
+					po.m_faceId = j;
+				}
+			}
+		}
+	}
+}
+----
+
+In dieser Funktion wird letztlich jede Box einzeln geprüft, und in jeder Box jede einzelne Fläche. Der eigentliche Schnittpunkt-Test erfolgt in der Funktion `BoxMesh::intersects()`.  Wurde ein Schnittpunkte gefunden, aktualisiert man die `PickObject` Struktur, aber nur, wenn das Objekt dichter am Betrachter liegt (kleinerer Entfernungswert in _dist_).
+
+.BoxMesh.cpp::intersects()
+[source,c++]
+----
+bool BoxMesh::intersects(unsigned int planeIdx, const QVector3D & p1, const QVector3D & d, float & dist) const {
+	const Rect & p = m_planeInfo[planeIdx];
+	return intersectsRect(p.m_a, p.m_b, p.m_normal, p.m_offset, p1, d, dist);
+}
+----
+
+Hier wird die objektunabhängige Schnittpunkt-Testfunktion `intersectsRect` aufgerufen, und dieser Funktion die für den mathematischen Algorithmus oben benötigten Parameter der aktuell gewählten Seite (mit Index `planeIdx`) übergeben. Das sind die Parameter der Ebenegleichung (*a*, *b*, *n*, *offset*) und die Parameter der Sichtline *p1* und *d*. Die Entfernung des gefundenen Schnittpunkts (Linienfaktor *t* wird im Falle eines Treffers in das Argument *dist* eingetragen.
+
+Die Parameter der Seitenfläche werden bei Übertragung der Boxobjekt-Koordinante in den Vertexpuffer aktualisiert (dann sind die Vertexkoordinaten des Boxobjekts bereits transformiert).
+
+Der oben beschriebene mathematische Algorithmus zur Schnittpunkterkennung steckt nun in der Funktion `intersectsRect()`:
+
+
+.PickObject.cpp:intersectsRect()
+[source,c++]
+----
+bool intersectsRect(const QVector3D & a,
+				const QVector3D & b,
+				const QVector3D & normal,
+				const QVector3D & offset,
+				const QVector3D & p1,
+				const QVector3D & d,
+				float & dist)
+{
+	// first the normal test
+
+	double angle = QVector3D::dotProduct(d, normal)/qAbs(d.length());
+	// Condition 1: same direction of normal vectors?
+	if (angle >= 0)
+		return false; // no intersection possible
+
+	// compute intersection point on line
+	double t = QVector3D::dotProduct(offset - p1, normal) / QVector3D::dotProduct(d, normal);
+	// Condition 2: outside viewing range?
+	if (t < 0 || t > 1)
+		return false;
+
+	// now determine location on plane
+	QVector3D x0 = p1 + t*d;
+
+	QVector3D rhs = x0 - offset; // right hand side of equation system:  a * x  +  b * y = (x - offset)
+
+	// we have three possible ways to get the intersection point, try them all until we succeed
+	double x,y;
+	// rows 1 and 2
+	if (solve(a.x(), a.y(), b.x(), b.y(), rhs.x(), rhs.y(), x, y)) {
+		// Condition 3: check if inside rect
+        if (x > 0 && x < 1 && y > 0 && y < 1) {
+			dist = t;
+			return true;
+		}
+		else
+			return false;
+	}
+	// rows 1 and 3
+	if (solve(a.x(), a.z(), b.x(), b.z(), rhs.x(), rhs.z(), x, y)) {
+		// Condition 3: check if inside rect
+		if (x > 0 && x < 1 && y > 0 && y < 1) {
+			dist = t;
+			return true;
+		}
+		else
+			return false;
+	}
+	// rows 2 and 3
+	if (solve(a.y(), a.z(), b.y(), b.z(), rhs.y(), rhs.z(), x, y)) {
+		// Condition 3: check if inside rect
+		if (x > 0 && x < 1 && y > 0 && y < 1) {
+			dist = t;
+			return true;
+		}
+		else
+			return false;
+	}
+
+	return false;
+}
+----
+
+Im Prinzip ist das 1-zu-1 der Algorithmus oben, mit der Prüfung der 3 Bedingungen. Bei der Berechnung der Parameter der Ebenengleichungen gibt es letztlich 3 Variante, wobei durchaus 2 davon je nach Lage der Ebene und Sichtlinie fehlschlagen können.
+
+[NOTE]
+====
+Liegt beispielsweise eine Fläche in der x-y Ebene, d.h. z = 0 und Normalenvektor = [0,0,1]. Dann wären z.B. *a* = [4,0,0] und *b* = [0,2,0]. Die Ebene wird von einem Sichtstrahl durchstoßen, mit *d* = [-1,-1,-1]. 
+
+Die Gleichungssysteme 2 und 3 sind damit nicht lösbar, da die Determinante jeweils zu 0 wird. Ähnliches kann für andere Ebenenausrichtungen passieren, weswegen alle 3 Kombinationen getestet werden müssen.
+
+Man kann das bei der Box und den 6 Seiten sehr schön sehen: 
+
+- Vorne und Hinten benötigen Gleichungssystem 1 
+- Links und Rechts benötigen Gleichungssystem 3
+- Oben und Unten benötigen Gleichungssystem 2
+====
+
+Die Lösungsfunktion ist einfach eine Implementierung der Cramerschen Regel (https://de.wikipedia.org/wiki/Cramersche_Regel):
+
+.PickObject.cpp:solve()
+[source,c++]
+----
+/* Solves equation system with Cramer's rule:
+	 a x + c y = e
+	 b x + d y = f
+*/
+bool solve(double a, double b, double c, double d, double e, double f, double & x, double & y) {
+	double det = a*d - b*c;
+	if (det == 0.)
+		return false;
+
+	x = (e*d - c*f)/det;
+	y = (a*f - e*b)/det;
+	return true;
+}
+----
+
+=== Picking Performance
+
+Anhand der möglicherweise vielen Flächen in einer komplexen Szene mag man auf die Idee kommen, dass die CPU-basierte Schnittpunktberechnung zu langsam wäre. Machen wir mal den Test:
+
+1 Mio Boxen (`BoxObject.cpp:Zeile 34`), macht 6 Mio Flächen. Im Debug Modus dauert die Schnittpunktberechnung mit _allen_ Flächen nach obigem Algorithmus insgesamt ca. 240 ms. Da lohnt es sich nicht, irgendwelche Performanceoptimierungen zu untersuchen (wie BSD- oder Octrees zur Partitionierung des Raumes etc., was man so in anderen Texten dazu findet).
+
+[TIP]
+====
+Möchte man Hervorhebungen wie bei einem "mouse over"-Effekt implementieren, sollte man versuchen, die Strahlensverfolgungszeit in den Bereich < 30 ms zu bekommen, damit das bei Bildwiederholraten von 60 Hz immer noch einigermaßen flüssig aussieht. Dies kann z.B. mit OpenMP Parallelisierung erfolgen, oder durch Beschränkung des Suchraums, z.B. durch Verwendung eines dichter am Beobachter liegenden _farplane_ - Punktes (also statt z=-1 z=-0.2 oder so verwenden) - damit fallen viele Ebenen bereits bei Bedingung 2 raus und man spart deutlich Rechenzeit.
+====
+
+=== Einfärben ausgewählter Objekte
+
+Ist nun Objekt und Seite identifiziert, so möchte man das jeweilige Objekt vielleicht hervorheben. Dafür müssen die entsprechenden Vertex-Farbeigenschaften geändert werden.
+
+Auch dies ist wieder nicht übermäßig kompliziert, da die Datenstrukturen in _Tutorial 05_ bereits in geeigneter Form angelegt wurden, als hätte man geahnt, dass man sowas mal brauchen würde :-):
+
+.BoxObject:highlight()
+[source,c++]
+----
+void BoxObject::highlight(unsigned int boxId, unsigned int faceId) {
+	// we change the color of all vertexes of the selected box to lightgray
+	// and the vertex colors of the selected plane/face to light blue
+
+	std::vector<QColor> faceCols(6);
+	for (unsigned int i=0; i<6; ++i) {
+		if (i == faceId)			faceCols[i] = QColor("#b40808");
+		else			            faceCols[i] = QColor("#f3f3f3");
+	}
+	m_boxes[boxId].setFaceColors(faceCols);
+
+	// then we update the respective portion of the vertexbuffer memory
+	Vertex * vertexBuffer = m_vertexBufferData.data();
+	unsigned int vertexCount = 0;
+	GLuint * elementBuffer = m_elementBufferData.data();
+	// advance pointers to position of the box
+
+	vertexBuffer += boxId*6*4; // 6 planes, with 4 vertexes each
+	elementBuffer += boxId*6*6; // 6 planes, with 2 triangles with 3 indexes each
+	vertexCount += boxId*6*4;
+	m_boxes[boxId].copy2Buffer(vertexBuffer, elementBuffer, vertexCount);
+
+	// and now update the entire vertex buffer
+	m_vbo.bind();
+	m_vbo.allocate(m_vertexBufferData.data(), m_vertexBufferData.size()*sizeof(Vertex));
+	m_vbo.release();
+}
+----
+
+Am Ende der Funktion wird der gesamte Vertexpuffer in die Grafikkarte kopiert. Bei größeren Objekten (> 1 Mio Elemente) kann das dann schonmal etwas dauern. Daher gibt es auch die Funktion `QOpenGLBuffer::write()`, welche nur einen Teil des Puffers ersetzt. Dann müsste die Funktion so angepasst werden:
+
+[source,c++]
+----
+void BoxObject::highlight(unsigned int boxId, unsigned int faceId) {
+    ....
+
+	// and now update the respective portion of the vertex buffer
+	m_vbo.bind();
+	m_vbo.write(boxId*6*4*sizeof(Vertex), m_vertexBufferData.data() + boxId*6*4, 6*4*sizeof(Vertex));
+	m_vbo.release();
+}
+----
+
+Die Funktion `QOpenGLBuffer::write()` ruft intern `glBufferSubData(GL_ARRAY_BUFFER, offset, count, data)` auf. Wichtig ist hier das Verständnis der Parameter der Funktion `QOpenGLBuffer::write(int offset, const void *data, int count)`:
+
+- _offset_ - Byte offset 
+- _data_ - Zeiger auf die Daten, die hineinkopiert werden sollen (das Offset wird hier nicht angewendet!)
+- _count_ - Anzahl der Bytes zum kopieren
+
+Man darf also nicht den Fehler machen, und `m_vertexBufferData.data()` als zweites Argument übergeben, sondern muss auch hier den Zeiger auf den Beginn des modifizierten Bereiches vorrücken `m_vertexBufferData.data() + boxId*6*4`.
+
+Was bringt die Änderung? Bei 1 Mio Boxen dauert die Variante mit `allocate()` ca. 160 ms (Debugmodus), mit `write()` deutlich weniger als 1 ms. 
+
+Natürlich sollte man sich die markierten Boxen merken, sodass man die Markierung hinterher wieder entfernen kann. Das sollte selbst aber nicht übermäßig kompliziert sein.
+
+[TIP]
+====
+Ähnlich, wie hier die Farben in den Vertexdaten aktualisiert wurden, kann man auch geometrische Objekte verschieben. Also bei Mausbewegung (und bspw. gedrückter linker Maustaste) die Vertexkoordinaten des markierten Objekts anpassen, den Vertexpuffer aktualisiern und siehe da - Objekte werden verschoben.
+====
+
+
+== Option 2: Falschfarbenrendering
+
+Grundgedanke dieser Option ist das Rendern aller unterschiedlich anklickbaren Fläche mit jeweils individuellen Farben. Technisch gibt es eine Einschränkung: es stehen *256^3 - 1* Farben stehen zur Verfügung (rgb) für ebenso viele Ebenen/Elemente. Reicht das nicht aus, muss entweder gefiltert werden (d.h. nur die _prinzipiell_ sichtbaren Objekte bekommen eine Nummer/Farbe), oder man benutzt Ray-Tracking (siehe oben).
+
+Die zahlreichen Tutorials zum Thema _Picking_ verwenden die folgende Technik:
+
+- Schleife über alle anklickbaren Elemente
+
+    * Setzen der eindeutigen Farbe je Element via `uniform` im Shader
+    * Zeichen jedes Elements via `glDrawXXX`-Aufruf
+
+- Lesen der Pixelfarbe unter dem Mauscursor
+
+Unnötig zu erwähnen, dass alleine die Vielzahl an `glDrawXXX` Calls problematisch ist. Außerdem ist es je nach Anwendung nicht notwendig, dieses Prozedere bei _jedem_ Mausklick zu wiederholen.
+
+=== Optimierungsidee für quasi-statische Szenen
+
+Nehmen wir mal an, es handelt sich um ein Programm mit vorwiegend nicht-animierten Szenen (Zielvorgabe dieses Tutorials). Dann könnte man die Falschfarbenberechnung stets kurz nach dem Abschluss der Kamerabewegung machen (d.h. mit kleiner Zeitverzögerung), und das resultierende Falschfarbenbild im CPU-Speicher vorhalten. Wenn man nun mit der Maus klickt, hat man sofort den Farbwert unter dem Mauscursor zur Hand. Man könnte auch viele Klicks abfragen, ohne die GPU zu beschäftigen. Für schnelle mouse-over-Effekte ist das eine sinnvolle Variante.
+
+Ist sicher eine recht einfache Variante und klingt super nach Arbeitseinsparung. Vor allem, wenn bei der Anwendungen ein Auswahl-Klick in der Scene zunächst nur mit irgendeiner Art der Hervorhebung verbunden ist. Die Scene müsste dann zwar neu gezeichnet werden, aber an der Falschfarbendarstellung zur Auswahl ändert sich nichts.
+
+Ohne die kleine "mit etwas Verzögerung zeichnen" Optimierung sieht der Algorithmus dann also so aus:
+
+- Zeichnen der Scene wie gehabt in den Ausgabepuffer
+- Zeichnen der Scene in einen Framebuffer, wobei hier der Vertexshader die Farben der Flächen aus einem separaten Farbpuffer holt - dies erlaubt weiterhin die Verwendung von Indexlisten und Vertexarrays
+
+Wir bräuchten dafür also:
+- ein weiteres ShaderProgramm, welches die Koordinaten aus dem Vertexarray (mit interleaved Storage) liest, aber die Falsch-Farben aus einem _separaten Puffer_ holt
+- einen Framebuffer, in den die Falschfarbendarstellung kopiert wird
+- eine Möglichkeit, die Farbwerte des Puffers im CPU-Speicher abzulegen
+- eine Abfrage der Farbwerte und Identifikation des angeklickten Elements
+
+Idealerweise wird hier nur der Farbpuffer beim Zeichnen getauscht, sodass man besser statt _interleaved_-Storage der Vertex-Daten, den Farbpuffer abtrennt und in einem separaten Speicherblock hält - dies macht die Aktualisierung der Daten durch das CPU-GPU-Mem-Bottleneck deutlich schneller.
+
+Hmm, wenn ich so darüber nachdenke, dass wir bereits einen funktionierenden und ausreichend schnellen Picking-Algorithmus oben haben, will man sich diesen Aufwand eigentlich nicht machen. Daher lass ich das jetzt mal bleiben und würde das Thema "Falschfarbenrendering" in einem späteren Tutorial zum Zweck der Sichtfaktorberechnung wieder ausbuddeln.

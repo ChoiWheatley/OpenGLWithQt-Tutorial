@@ -1,0 +1,245 @@
+:math:
+:imagesdir: ./images
+
+= Tutorial 09: Render in eine Framebuffer und Verwendung von Kernel Effekten
+
+
+.Tutorial_09, Framebuffer mit Kernel-Effekten
+image::Tutorial_09_FramebufferImageKernel.png[Tutorial_09,pdfwidth=8cm]
+
+[NOTE]
+====
+Quelltext für dieses Tutorial liegt im github repo:  https://github.com/ghorwin/OpenGLWithQt-Tutorial/tree/master/code/Tutorial_09[Tutorial_09]
+====
+
+In dem Tutorial soll die Szene zunächst in einem Framebuffer gerendert werden, welche dann unter Verwendung eines Image-Postprocessing-Kernels auf den Bildschirm übertragen wird. Im Prinzip wird das Gleiche gemacht, wie in https://learnopengl.com/Advanced-OpenGL/Framebuffers (dieses Tutorial zu lesen, dürfte beim Verständnis des Quelltextes unten helfen).
+
+== Initialisierung des Framebuffers
+
+Mit OpenGL muss man den Framebuffer, den Tiefen- und Ausstanzpufferanhang (__depth and stencil attachment__) erstellen, und eine Textur für die Farbwerte anhängen:
+
+[source,c++]
+----
+// framebuffer configuration
+// -------------------------
+glGenFramebuffers(1, &framebuffer);
+glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+// create a color attachment texture
+glGenTextures(1, &textureColorbuffer);
+glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, scr_width, scr_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0);
+// create a renderbuffer object for depth and stencil attachment (we won't be sampling these)
+glGenRenderbuffers(1, &rbo);
+glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, scr_width, scr_height); // use a single renderbuffer object for both a depth AND stencil buffer.
+glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo); // now actually attach it
+// now that we actually created the framebuffer and added all attachments we want to check if it is actually complete now
+if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+	qDebug() << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+----
+
+Solange man nicht Spezielles machen will, können diese vielen Zeilen einfach durch:
+
+[source,c++]
+----
+m_frameBufferObject = new QOpenGLFramebufferObject(QSize(scr_width, scr_height), QOpenGLFramebufferObject::CombinedDepthStencil);
+----
+
+ersetzen.
+
+
+== Größenanpassung
+
+Wenn man die Fenstergröße verändert, muss man auch die Größe der Puffer anpassen. Dies geschieht sinnvollerweise in `resizeGL()` und sieht mit nativem OpenGL so aus:
+
+[source,c++]
+----
+// also resize the texture buffer
+glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+// actual resize operation
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, scr_width, scr_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+// actual resize operation
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, scr_width, scr_height); 
+----
+
+Bei Verwendung der `QOpenGLFrameBufferObject`-Klasse muss man einfach das Klassenobjekt neu erstellen:
+
+[source,c++]
+----
+delete m_frameBufferObject;
+m_frameBufferObject = new QOpenGLFramebufferObject(QSize(scr_width, scr_height), QOpenGLFramebufferObject::CombinedDepthStencil);
+----
+
+== Verwendung des Framebuffers
+
+=== Rendern in den Framebuffer
+
+Erst wird der Framebuffer eingebunden, mit nativem OpenGL:
+
+[source,c++]
+----
+glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+----
+
+mit `QOpenGLFrameBufferObject`:
+
+[source,c++]
+----
+m_frameBufferObject->bind();
+----
+
+=== Zurücksetzen des Framebuffers
+
+Nach Rendern der Szene dann wieder zurücksetzen des normalen Renderbuffers, mit nativem OpenGL:
+
+[source,c++]
+----
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+----
+
+mit `QOpenGLFrameBufferObject`:
+
+[source,c++]
+----
+m_frameBufferObject->bindDefault();
+----
+
+=== Einbinden der Framebuffer-Texture
+
+und einbinden der Textur zur Verwendung mit dem ScreenFill-Shader und Rechteck. Wieder mit OpenGL:
+
+[source,c++]
+----
+glBindTexture(GL_TEXTURE_2D, textureColorbuffer);
+----
+
+und mit `QOpenGLFrameBufferObject`:
+
+[source,c++]
+----
+glBindTexture(GL_TEXTURE_2D, m_frameBufferObject->texture());
+----
+
+=== Zeichnen des gerenderten Bilden auf den Bildschirm (mit Kernel-Effekten)
+
+Das direkte Übertragen einer Texture auf den Bildschirm ist recht einfach - ohne jedwede Transformation wird ein Rechteck (aus 2 Dreiecken bestehend) unverzerrt auf den Bildschirm übertragen. Dieses Bildschirm-Rechteck ist im Zeichenobjekt `Texture2ScreenObject` implementiert:
+
+.Texture2ScreenObject.cpp
+[source,c++]
+----
+void Texture2ScreenObject::create(QOpenGLShaderProgram * shaderProgramm) {
+	// Create Vertex Array Object
+	m_vao.create();		// create Vertex Array Object
+	m_vao.bind();		// and bind it
+
+	float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+		// positions   // texCoords
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		-1.0f, -1.0f,  0.0f, 0.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+		 1.0f,  1.0f,  1.0f, 1.0f
+	};
+	// Create Vertex Buffer Object
+	m_vbo.create();
+	m_vbo.bind();
+	m_vbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+	m_vbo.allocate(quadVertices, sizeof(quadVertices));
+
+	// layout(location = 0) = vec2 position
+	shaderProgramm->enableAttributeArray(0); // array with index/id 0
+	shaderProgramm->setAttributeBuffer(0, GL_FLOAT,
+								  0 /* position/vertex offset */,
+								  2 /* two floats per position = vec2 */,
+								  4*sizeof(float) /* stride = 4 floats */);
+	shaderProgramm->enableAttributeArray(1); // array with index/id 1
+	shaderProgramm->setAttributeBuffer(1, GL_FLOAT,
+								  2*sizeof(float) /* texture index offset */,
+								  2 /* two floats per position = vec2 */,
+								  4*sizeof(float) /* stride = 4 floats */);
+	m_vao.release();
+	m_vbo.release();
+}
+----
+
+Also, Dimension entspricht den NDC und Texturekoordinaten gehen von 0..1 in beiden Achsen - also ein 1-zu-1 Abbild. Der Vertex-Shader-Code ist ebenfalls einfach:
+
+.screenfill.vert
+[source,c]
+----
+#version 330 core
+layout (location = 0) in vec2 aPos;
+layout (location = 1) in vec2 aTexCoords;
+
+out vec2 TexCoords;
+
+void main() {
+  TexCoords = aTexCoords;
+  gl_Position = vec4(aPos.x, aPos.y, 0.0, 1.0); 
+}
+----
+
+Und im Fragment-Shader kann man sich nun austoben (siehe dazu Erläuterungen auf https://learnopengl.com/Advanced-OpenGL/Framebuffers und die Beispiele auf https://setosa.io/ev/image-kernels.
+
+.screenfill_with_kernel.frag
+[source,c]
+----
+#version 330 core
+
+out vec4 FragColor;
+
+in vec2 TexCoords;
+
+uniform sampler2D screenTexture;
+
+void main() {
+  float x_offset;
+  float y_offset;
+  // textureSize returns dimensions of texture, and thus screen dimension
+  x_offset = 1.0 / textureSize(screenTexture, 0).x;
+  y_offset = 1.0 / textureSize(screenTexture, 0).y;
+  // x_offset = 1 means 1 pixel in normalized coordinates
+  vec2 offsets[9] = vec2[](
+    vec2(-x_offset,  y_offset), // top-left
+    vec2( 0.0f,    y_offset), // top-center
+    vec2( x_offset,  y_offset), // top-right
+    vec2(-x_offset,  0.0f),   // center-left
+    vec2( 0.0f,    0.0f),   // center-center
+    vec2( x_offset,  0.0f),   // center-right
+    vec2(-x_offset, -y_offset), // bottom-left
+    vec2( 0.0f,   -y_offset), // bottom-center
+    vec2( x_offset, -y_offset)  // bottom-right
+  );
+
+  // sharpen kernel
+  float kernel[9] = float[] (
+    -1, -1, -1,
+    -1,  9, -1,
+    -1, -1, -1
+  );
+
+  vec3 sampleTex[9];
+  for(int i = 0; i < 9; i++) {
+    sampleTex[i] = vec3(texture(screenTexture, TexCoords.st + offsets[i]));
+  }
+  vec3 col = vec3(0.0);
+  for(int i = 0; i < 9; i++)
+    col += sampleTex[i] * kernel[i];
+
+  // finally grayscale transformation
+  float average = 0.2126 * col.r + 0.7152 * col.g + 0.0722 * col.b;
+  FragColor = vec4(average, average, average, 1.0);
+}
+----
+
+Mit diesen Shaderprogrammen wird dann das Bildschirmrechteck unter Verwendung der Framebuffer-Texture gezeichnet - und dabei die Kernel-Effekte angewendet.
+
+Das war's auch schon. Der Quelltext für _Tutorial 09_ enthält eine komplette Verwendung (und in einem früherem git Commit ist die native OpenGL-Variante drin).

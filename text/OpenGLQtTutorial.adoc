@@ -1,20 +1,32 @@
 OpenGL + Qt Tutorial
 ====================
 Andreas Nicolai <andreas.nicolai@tu-dresden.de>
-v0.1.0, März 2020
+v1.0.0, April 2020
 :Author Initials: AN
 :toc: left
 :toclevels: 3
+:toc-title: Inhaltsverzeichnis
 :icons: font
 :imagesdir: ./images
 :numbered:
-:website: https://bauklimatik-dresden.de/privat/nicolai/QtOpenGL-Tutorial
+:website: https://ghorwin.github.io/OpenGLWithQt-Tutorial
 :source-highlighter: rouge
 :rouge-style: custom
 :title-page:
 :stylesdir: ./css
+:stylesheet: roboto_ubuntu.css
 
-
+:numbered!:
 include::Introduction.adoc[leveloffset=+1]
+:numbered:
 include::Tutorial_01.adoc[leveloffset=+1]
+include::Tutorial_02.adoc[leveloffset=+1]
+include::Tutorial_03.adoc[leveloffset=+1]
+include::Tutorial_04.adoc[leveloffset=+1]
+include::Tutorial_05.adoc[leveloffset=+1]
+include::Tutorial_06.adoc[leveloffset=+1]
+include::Tutorial_07.adoc[leveloffset=+1]
+include::Tutorial_08.adoc[leveloffset=+1]
+include::Tutorial_09.adoc[leveloffset=+1]
 
+include::Tutorial_0x.adoc[leveloffset=+1]

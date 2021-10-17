@@ -1,9 +1,13 @@
 #version 330 core
 
-// fragmentation shader
+// fragment shader
 
-out vec4 FragColor;  // output: finalColor (fertiger Farbwert als rgb-Wert)
+in vec2 texCoord;       // input from vert shader, texture coordinate
+out vec4 finalColor;     // output: final color value as rgba-value
+
+uniform sampler2D ourTexture;
 
 void main() {
-  FragColor = vec4(0.8, 0.2, 0.1, 1);
+    finalColor = texture(ourTexture,     // texture sampler
+                         texCoord);     // texture coordinates
 }

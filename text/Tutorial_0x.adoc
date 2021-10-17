@@ -1,0 +1,228 @@
+= Tutorial xx: CMake als BuildSystem für Qt und OpenGL, und Deployment von Qt+OpenGL Anwendungen
+
+Für das automatische Bauen von Qt (z.B. mit Jenkins oder ähnlichen Build-Systemen) bietet sich CMake an. Es geht zwar auch mit qmake, aber in diesem Tutorial soll gezeigt werden, wie man das eine CMakeLists.txt-Datei für das Bauen von Qt-Anwendungen unter Linux, MacOS und Windows konfiguriert.
+
+Im zweiten Teil des Tutorials geht es dann um das Deployment, d.h. welche Dateien jeweils kopiert werden müssen. Auch dies ist nicht wirklich OpenGL-spezifisch, aber zeigt nochmal, welche OpenGL-Bibliotheken auf den jeweiligen Betriebssystemen vorausgesetzt werden können, und welche kopiert werden müssen.
+
+[NOTE]
+====
+CMakeLists.txt - Dateien und entsprechende Build-Scripte liegen verschiedenen Tutorial-Quelltexten bei. Konkret beziehen sich die Beispiele unten auf den Tutorial 06 Quelltext, der im github repo liegt:  https://github.com/ghorwin/OpenGLWithQt-Tutorial/tree/master/code/Tutorial_06[Tutorial_06]
+====
+
+== CMakeLists.txt für OpenGL-Anwendungen
+
+Hier ist eine Beispiel-CMakeLists.txt-Datei (aus Tutorial 05), welche das mal demonstriert:
+
+[source,cmake]
+----
+# CMakeLists.txt file for OpenGL + Qt Tutorial Series
+
+# The project name
+project( Tutorial_06 )
+
+# Require a fairly recent cmake version
+cmake_minimum_required( VERSION 2.8.12 )
+
+# Set default build type
+if (NOT CMAKE_BUILD_TYPE)
+	set( CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+		"Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel." FORCE)
+endif (NOT CMAKE_BUILD_TYPE)
+
+# -------------------------------------------------------------
+# Packages
+# -------------------------------------------------------------
+
+# Test for Qt5 modules
+find_package(Qt5Widgets REQUIRED)
+
+# set corresponding libraries
+set( QT_LIBRARIES
+	Qt5::Widgets
+)
+
+# we need OpenGL
+find_package( OpenGL REQUIRED )
+
+
+# -------------------------------------------------------------
+# Application
+# -------------------------------------------------------------
+
+# automatically add CMAKE_CURRENT_SOURCE_DIR and CMAKE_CURRENT_BINARY_DIR to the include directories in every processed CMakeLists.txt
+set( CMAKE_INCLUDE_CURRENT_DIR ON )
+
+include_directories(
+	${PROJECT_SOURCE_DIR}		# needed so that ui-generated header files find our own headers
+	${Qt5Widgets_INCLUDE_DIRS}
+)
+
+# collect a list of all designer ui files
+file( GLOB APP_UIS ${PROJECT_SOURCE_DIR}/*.ui )
+
+# collect a list of all header files (to be used in MOC compiler)
+file( GLOB APP_HDRS ${PROJECT_SOURCE_DIR}/*.h )
+
+# collect a list of all source files in this directory
+file( GLOB APP_SRCS ${PROJECT_SOURCE_DIR}/*.cpp )
+
+# collect the Qt resource files (*.qrc)
+file( GLOB APP_QRCS ${PROJECT_SOURCE_DIR}/*.qrc )
+
+# look for Windows rc file
+file( GLOB APP_WIN_RC ${PROJECT_SOURCE_DIR}/*.rc )
+
+# look for Apple icns file
+file( GLOB APP_MACOS_ICNS ${PROJECT_SOURCE_DIR}/*.icns )
+
+qt5_wrap_ui( APP_UI_SRCS ${APP_UIS} )
+qt5_add_resources( APP_RC_SRCS ${APP_QRCS} )
+qt5_wrap_cpp( APP_MOC_SRCS ${APP_HDRS} )
+
+# build application executable for the different platforms
+if( WIN32 )
+	add_executable( ${PROJECT_NAME} WIN32
+					${APP_SRCS} ${APP_MOC_SRCS} ${APP_RC_SRCS} ${APP_UI_SRCS} ${APP_WIN_RC}
+	)
+
+	# enable console window (to see debug/profiler messages)
+	set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE" )
+endif( WIN32 )
+
+if( UNIX )
+	if( APPLE )
+		add_executable( ${PROJECT_NAME} MACOSX_BUNDLE
+						${APP_SRCS} ${APP_MOC_SRCS} ${APP_RC_SRCS} ${APP_UI_SRCS} ${APP_MACOS_ICNS}
+		)
+	else( APPLE )
+		add_executable( ${PROJECT_NAME}
+						${APP_SRCS} ${APP_MOC_SRCS} ${APP_RC_SRCS} ${APP_UI_SRCS}
+		)
+	endif( APPLE )
+endif( UNIX )
+
+
+# link libraries
+target_link_libraries( ${PROJECT_NAME}
+	${QT_LIBRARIES}
+	${OPENGL_LIBRARIES}
+)
+----
+
+Das Script selbst ist eigentlich nicht schwer zu verstehen (eventuell kann man mal die CMake-Syntax und Befehle auf https://cmake.org nachschlagen). Je nachdem, welche Qt-Module verwendet werden, müsste man die Sektion "Packages" noch entsprechend erweitern.
+
+[TIP]
+====
+Unter Windows lohnt es sich (zumindest während der Entwicklung), das Konsolenfenster einzublenden, damit man `qDebug()`-Ausgaben sieht. Das wird mit der Zeile:
+
+[source,cmake]
+----
+set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE" )
+----
+
+eingeschaltet.
+====
+
+
+=== Erstellung
+
+==== Linux
+
+Um Quelltexte und Resourcendateien nicht mit den generierten Dateien in einem Verzeichnis zu haben, lohnt sich ein _out-of-source_ build, d.h. in einem getrennte Verzeichnis. Beispielsweise kann man parallel zum `Tutorial_05`-Verzeichnis noch ein Verzeichnis `build_Tutorial_05` anlegen. In diesem Verzeichnis reichen dann folgende Befehle zur Erstellung aus:
+
+[source,bash]
+----
+cmake -DCMAKE_BUILD_TYPE:String="Release" ../Tutorial_05 
+make -j4
+----
+
+Das Argument `-DCMAKE_BUILD_TYPE:String="Release"` legt ein Release-Build fest, Standard ist Debug. `-j4` legt beim make das Erstellen mit 4 parallelen Jobs fest.
+
+
+==== Mit eigener Qt Version bauen
+
+Falls nicht das systemweit installierte Qt verwendet werden soll, kann man auch den `CMAKE_PREFIX_PATH` auf eine eigene Qt Installation umbiegen.
+
+[source,bash]
+----
+export CMAKE_PREFIX_PATH=~/Qt/5.14.1/gcc_64
+cmake -DCMAKE_BUILD_TYPE:String="Release" ../Tutorial_05 
+make -j4
+----
+
+
+==== MacOS
+
+Ganz genauso wie unter Linux.
+
+==== Windows
+
+Fast genauso wie unter Linux, nur eben mit Batch-Befehlen. Hier ist ein Beispiel für die Verwendung eines VC-Compilers, bereits als Batch-Datei zusammengestellt:
+
+[source,batch]
+----
+@echo off
+
+:: cl compiler path
+call "c:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x64
+
+:: path to Qt
+set CMAKE_PREFIX_PATH=c:\Qt\5.11.3\msvc2015_64
+
+:: configure in release mode, to build with JOM
+cmake -G "NMake Makefiles JOM" -DCMAKE_BUILD_TYPE:String="Release" ..\Tutorial_05
+
+:: build
+jom
+----
+
+Natürlich muss man die Pfade zum VC Compiler und zur Qt Installation im Batch-Script oben anpassen.
+
+Alternativ kann man unter Windows CMake auch dazu benutzen, VC Projektdateien zu erstellen, aber wenn man Qt Creator hat, wer braucht dann VC als Editor?
+
+
+=== Deployment 
+
+==== Windows
+
+Nachdem man unter Windows die Anwendung kompiliert hat, muss man noch die zur Verteilung benötigten DLLs zusammenstellen. Dies geht am einfachsten durch Verwendung des `windeployqt` Tools. Ein Aufruf sieht wie folgt aus:
+
+[source,batch]
+----
+:: path to Qt
+set CMAKE_PREFIX_PATH=c:\Qt\5.11.3\msvc2015_64
+
+:: copy dependencies
+%CMAKE_PREFIX_PATH%\bin\windeployqt vc_x64_deploy\Tutorial_06.exe
+----
+
+Die vom Tool ins Verzeichnis kopierten Dateien werden für die Ausführung benötigt. Es sind zumeist nicht alle Dateien notwendig, das hängt aber vom jeweiligen Programm ab. Anstelle die `redist.exe` auf dem Zielsystem auszuführen, kann man auch die benötigten VC DLLS direkt mit kopieren, also bspw. `msvcp140.dll` und `vcruntime140.dll` bei VC 2015. 
+
+Die Dateien befinden sich z.B. in:
+
+    c:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\redist\x64\Microsoft.VC140.CRT
+
+Sind alle benötigten Dateien im gleichen Verzeichnis wie die `.exe`-Datei, sollte man das Programm auf anderen Windows-Rechnern starten können (als Portable-Version).
+
+[TIP]
+====
+Es bietet sich an, das Deployment nicht im Erstellungsverzeichnis durchzuführen. Die Beispielskripte `build.bat`  und  `deploy.bat` im Tutorial 06 Quelltext zeigen, wie man Erstellung und Deployment in separaten Unterverzeichnissen durchführt. Dann kann man vereinfacht auch das gesamte Deployment-Verzeichnis packen und hat sofort ein "Portable"-Release der Software.
+====
+
+
+
+==== MacOS
+
+Unter MacOS wird eine Qt Anwendung üblicherweise gegen die installierten Frameworks gebaut. Man kann sich das anschauen, wenn man mit `otool` to gelinkten Bibliotheken anschaut:
+
+----
+> otool -L Tutorial_05.app/Contents/MacOS/Tutorial_05 
+Tutorial_05.app/Contents/MacOS/Tutorial_05:
+	@rpath/QtWidgets.framework/Versions/5/QtWidgets (compatibility version 5.11.0, current version 5.11.3)
+	/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL (compatibility version 1.0.0, current version 1.0.0)
+	@rpath/QtGui.framework/Versions/5/QtGui (compatibility version 5.11.0, current version 5.11.3)
+	@rpath/QtCore.framework/Versions/5/QtCore (compatibility version 5.11.0, current version 5.11.3)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 120.1.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1226.10.1)
+----
+

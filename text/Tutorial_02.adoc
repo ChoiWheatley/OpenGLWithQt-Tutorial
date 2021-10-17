@@ -1,0 +1,465 @@
+:imagesdir: ./images
+= Tutorial 02: Alternative: die Klasse QOpenGLWindow
+
+[TIP]
+====
+Wer mit der Funktionalität des OpenGLWindows aus _Tutorial 01_ zufrieden ist, kann gleich mit _Tutorial 03_ weitermachen.
+====
+
+In diesem Teil schauen wir uns die Klasse https://doc.qt.io/qt-5/qopenglwindow.html[QOpenGLWindow] an. Mit Hilfe dieser Klasse (die letztlich die Klasse `OpenGLWindow` aus dem _Tutorial 01_ ersetzt) erstellen wir ein leicht modifiziertes Zeichenprogramm (2 Dreiecke, welche ein buntes Rechteck ergeben und via Element-Index-Puffer gezeichnet werden). 
+
+.Ausgabe: Tutorial_02 (Linux/Ubuntu Screenshot)
+image::Tutorial_02_linux.png[Tutorial_02,pdfwidth=8cm]
+
+[NOTE]
+====
+Quelltext für dieses Tutorial liegt im github repo:  https://github.com/ghorwin/OpenGLWithQt-Tutorial/tree/master/code/Tutorial_02[Tutorial_02]
+====
+
+Zuerst schauen wir an, was die Klasse `OpenGLWindow` unter der Haube macht.
+
+== Verwendung der Klasse
+
+Eine interessante Eigenschaft des `QOpenGLWindow` ist die Möglichkeit, nur einen Teil des Fensters neu zu zeichnen. Das wird über die `UpdateBehavior`-Eigenschaft gesteuert. Interessant ist das eigentlich nur, wenn man mittels rasterbasiertem QPainter Teile des Bildes aktualisieren möchte. Es gibt 3 Varianten:
+
+* `QOpenGLWindow::NoPartialUpdate` - das gesamte Bild wird jedes Mal neu gezeichnet (es wird kein zusätzlicher Framebuffer erzeugt und verwendet)
+* `QOpenGLWindow::PartialUpdateBlit` - man zeichnet nur einen Teil des Bildes neu, und das in einem zusätzlichen, automatisch erstellten Framebuffer. Nach Ende des Zeichnens wird einfach der neu gezeichnete Teil in den eigentlichen Framebuffer kopiert.
+* `QOpenGLWindow::PartialUpdateBlend` - im Prinzip wie die 2. Varianten, nur dass diesmal der Inhalt nicht kopiert, sondern überblendet wird.
+
+Ob man die 2. oder 3. Funktion braucht, hängt sicher von der Anwendung ab. Für viele OpenGL-Anwendungen wird das vielleicht nicht notwendig sein, daher schauen wir uns hier mal Variante mit `QOpenGLWindow::NoPartialUpdate` an.
+
+Die Klasse `QOpenGLWindow` bietet 5 interessante virtuelle Funktionen an:
+[source,c++]
+----
+virtual void initializeGL();            // initialization stuff
+virtual void paintGL();                 // actual painting
+virtual void paintOverGL();             // not needed for NoPartialUpdate
+virtual void paintUnderGL();            // not needed for NoPartialUpdate
+virtual void resizeGL(int w, int h);    // to update anything related to view port 
+                                        // size (projection matrix etc.)
+----
+
+Die Funktion `initializeGL()` macht eigentlich das Gleiche, wie in Tutorial 01 die Funktion `initialize()`.
+
+Die Funktion `paintGL()` macht das Gleiche, wie in Tutorial 01 die Funktion `render()`, d.h. hier wird das Bild mit OpenGL gezeichnet.
+
+Die Funktionen `paintOverGL()` und `paintUnderGL()` werden im Modus `QOpenGLWindow::NoPartialUpdate` nicht benötigt.
+
+Letztlich ist die Funktion `resizeGL(int w, int h)` nur eine Bequemlichkeitsfunktion, aufgerufen aus der `event()` Funktion für das `QEvent::ResizeEvent`. Hier kann man z.B. die Projektionsmatrix an den neuen Viewport anpassen oder sonstige Größenanpassungen vornehmen.
+
+== Die Implementierung der Klasse QOpenGLWindow 
+
+Um die Gemeinsamkeiten und Unterschiede zur OpenGLWindow-Klasse aus Tutorial 01 zu verstehen, schauen wir uns mal die Klassenimplementierung an. Die Quelltextschnipsel stammen aus der Qt Version 5.14, sollten aber im Vergleich zu vorherigen Versionen nicht groß verändert sein.
+
+Wichtigster Unterschied ist schon die Vererbungshierarchie. `QOpenGLWindow` leitet von `QOpenGLPaintDevice` ab, welches hardwarebeschleunigtes Zeichnen mit dem rasterbasierten `QPainter` erlaubt. Allerdings gibt es einen kleinen Haken. Zitat aus dem Handbuch:
+
+[quote,Qt Documentation 5.9 zu QOpenGLPaintDevice]
+____
+Antialiasing in the OpenGL paint engine is done using multisampling. Most hardware require significantly more memory to do multisampling and the resulting quality is not on par with the quality of the software paint engine. The OpenGL paint engine's strength lies in its performance, not its visual rendering quality. 
+____
+
+Das hat insofern Auswirkung auf das Gesamterscheinungsbild der Anwendung, wenn im OpenGL Fenster verwaschene Widgets oder Kontrollen gezeichnet werden, daneben aber klassische Widgets mit scharfen Kanten.  Man kennt das Problem vielleicht von den verwaschenen Fenstern in Windows 10, wenn dort die Anwendungen letztlich in einen Pixelpuffer  zeichnen, welcher dann als Textur in einer 3D Oberfläche interpoliert gerendert wird. Sieht meiner Meinung nach doof aus :-)
+
+Hilfreich kann das dennoch sein, wenn man existierende Zeichenfunktionalität (basierend auf QPainter) in einem OpenGL-Widget verwenden möchte. Falls man die Funktionalität nicht braucht, bringt das PaintDevice und die dafür benötigte Funktionalität _etwas unnützen Overhead_ (vor allem Speicherverbrauch) mit sich.
+
+Schauen wir uns nun die Gemeinsamkeiten an.
+
+=== Constructor
+
+Der Konstruktor sieht erstmal fast genauso aus, wie der unserer `OpenGLWindow`-Klasse. abgesehen davon, dass die Argumente in die private https://en.wikipedia.org/wiki/Opaque_pointer[Pimpl]-Klasse weitergeleitet werden.
+[source,c++]
+----
+QOpenGLWindow::QOpenGLWindow(QOpenGLWindow::UpdateBehavior updateBehavior, QWindow *parent)
+    : QPaintDeviceWindow(*(new QOpenGLWindowPrivate(nullptr, updateBehavior)), parent)
+{
+    setSurfaceType(QSurface::OpenGLSurface);
+}
+----
+
+=== Ereignisbehandlungsroutinen
+
+Interessanter sind schon die Ereignisbehandlungsroutinen:
+
+[source,c++]
+----
+void QOpenGLWindow::paintEvent(QPaintEvent * /*event*/ ) {
+    paintGL();
+}
+
+void QOpenGLWindow::resizeEvent(QResizeEvent * /*event*/ ) {
+    Q_D(QOpenGLWindow);
+    d->initialize();
+    resizeGL(width(), height());
+}
+----
+
+Das `paintEvent()` wird einfach an die vom Nutzer zu implementierende Funktion `paintGL()` weitergereicht. Insofern analog zu der Ereignisbehandlung im OpenGLWidget, welches auf `QEvent::UpdateRequest` wartet. Allerdings sind auf dem Weg bis zum Aufruf der `paintEvent()` Funktion etliche Zwischenschritte implementiert, bis zum Erzeugen des QPaintEvent-Objekts, welches gar nicht benötigt wird. Der Aufwand wird deutlich, wenn man sich die Aufrufkette anschaut:
+
+[source,c++]
+----
+QPaintDeviceWindow::event(QEvent *event)  // waits for QEvent::UpdateRequest
+QPaintDeviceWindowPrivate::handleUpdateEvent()
+QPaintDeviceWindowPrivate::doFlush()  // calls QPaintDeviceWindowPrivate::paint()
+
+    bool paint(const QRegion &region)
+    {
+        Q_Q(QPaintDeviceWindow);
+        QRegion toPaint = region & dirtyRegion;
+        if (toPaint.isEmpty())
+            return false;
+
+        // Clear the region now. The overridden functions may call update().
+        dirtyRegion -= toPaint;
+
+        beginPaint(toPaint); // here we call QOpenGLWindowPrivate::beginPaint()
+
+        QPaintEvent paintEvent(toPaint);
+        q->paintEvent(&paintEvent); // here we call QOpenGLWindowPrivate::paintEvent()
+
+        endPaint(); // here we call QOpenGLWindowPrivate::endPaint()
+
+        return true;
+    }
+----
+
+Alternativ wird `paintGL()` noch aus der Ereignisbehandlungsroutine `QPaintDeviceWindow::exposeEvent()` aufgerufen, wobei dort direkt `QPaintDeviceWindowPrivate::doFlush()` gerufen wird. Die Funktionen `beginPaint()` und  `endPaint()` kümmern sich um den temporären Framebuffer, in dem beim UpdateBehavior `QOpenGLWindow::PartialUpdateBlit` und `QOpenGLWindow::PartialUpdateBlend` gerendert wird. Ohne diese Modi passiert in der Funktion sehr wenig.
+
+=== Initialisierung
+
+Interessant ist noch der Initialisierungsaufruf, der in der `resizeEvent()` Ereignisbehandlungsroutine steckt.
+
+[source,c++]
+----
+void QOpenGLWindowPrivate::initialize()
+{
+    Q_Q(QOpenGLWindow);
+
+    if (context)
+        return;
+
+    if (!q->handle())
+        qWarning("Attempted to initialize QOpenGLWindow without a platform window");
+
+    context.reset(new QOpenGLContext);
+    context->setShareContext(shareContext);
+    context->setFormat(q->requestedFormat());
+    if (!context->create())
+        qWarning("QOpenGLWindow::beginPaint: Failed to create context");
+    if (!context->makeCurrent(q))
+        qWarning("QOpenGLWindow::beginPaint: Failed to make context current");
+
+    paintDevice.reset(new QOpenGLWindowPaintDevice(q));
+    if (updateBehavior == QOpenGLWindow::PartialUpdateBlit)
+        hasFboBlit = QOpenGLFramebufferObject::hasOpenGLFramebufferBlit();
+
+    q->initializeGL();
+}
+----
+Eigentlich sieht die Funktion fast genauso wie der Initialisierungsteil der Funktion `OpenGLWindow::renderNow()` aus _Tutorial 01_ aus. Abgesehen natürlich davon, dass noch ein `QOpenGLWindowPaintDevice` erzeugt wird.
+
+
+== Zeichnen mit Index-/Elementpuffern
+
+Als Erweiterung zum _Tutorial 01_ soll im Anwendungsbeispiel für `QOpenGLWindow` ein Indexpuffer verwendet werden. Zwei Erweiterungen werden vorgestellt:
+
+- interleaved Vertex-Puffer (d.h. Koordinaten und Farben zusammen in einem Puffer)
+- indexbasiertes Elementzeichnen (und den dafür benötigten Elementpuffer)
+
+Die Implementierung des `RectangleWindow` ist zunächst mal fast identisch zum `TriangleWindow` aus __Tutorial 01__:
+
+.RectangleWindow.h
+[source,c++]
+----
+/*	This is the window that shows the two triangles to form a rectangle.
+	We derive from our QOpenGLWindow base class and implement the
+	virtual initializeGL() and paintGL() functions.
+*/
+class RectangleWindow : public QOpenGLWindow {
+public:
+	RectangleWindow();
+	virtual ~RectangleWindow() Q_DECL_OVERRIDE;
+
+	void initializeGL() Q_DECL_OVERRIDE;
+	void paintGL() Q_DECL_OVERRIDE;
+
+private:
+	// Wraps an OpenGL VertexArrayObject (VAO)
+	QOpenGLVertexArrayObject	m_vao;
+	// Vertex buffer (positions and colors, interleaved storage mode).
+	QOpenGLBuffer				m_vertexBufferObject;
+	// Index buffer to draw two rectangles
+	QOpenGLBuffer				m_indexBufferObject;
+
+	// Holds the compiled shader programs.
+	QOpenGLShaderProgram		*m_program;
+};
+----
+
+Die wesentlichsten Erweiterungen sind:
+
+- die Klasse erbt von `QOpenGLWindow`
+- die Initialisierung erfolgt in der Funktion `initializeGL()` (vormals `TriangleWindow::initialize()`)
+- das Rendern erfolgt in der Funktion `paintGL()` (vormals `TriangleWindow::render()`)
+- es gibt eine neue Variable vom Typ `QOpenGLBuffer`, welche wir für den Indexpuffer verwenden.
+
+=== Shaderprogramm
+
+Die Initialisierung beginnt wie in _Tutorial 01_ unverändert mit dem Erstellen und Compilieren des Shaderprogramms. Da diesmal Farben verwendet werden, müssen beide Shaderprogramme angepasst werden:
+
+.Vertexshader "shaders/pass_through.vert"
+[source,c]
+----
+#version 330 core
+
+// vertex shader
+
+// input:  attribute named 'position' with 3 floats per vertex
+layout (location = 0) in vec3 position;
+layout (location = 1) in vec3 color;
+
+out vec4 fragColor;
+
+void main() {
+  gl_Position = vec4(position, 1.0);
+  fragColor = vec4(color, 1.0);
+}
+----
+
+Es gibt nun zwei Vertex-Attribute: 
+
+- layout location 0 = Position (als vec3 Koordinate)
+- layout location 1 = Farbe (auch als vec3, rgb Farbwerte je im Bereich 0..1)
+
+Der Farbwert eines Vertex wird als Ausgabevariable 'fragColor' einfach als vec4 weitergereicht und kommt dann, bereits fertig interpoliert, als 'fragColor' im Fragmentshader an. Dort wird er unverändert ausgegeben.
+
+.Fragmentshader "shaders/simple.frag"
+[source,c]
+----
+#version 330 core
+
+// fragment shader
+
+in vec4 fragColor;    // input: interpolated color as rgba-value
+out vec4 finalColor;  // output: final color value as rgba-value
+
+void main() {
+  finalColor = fragColor;
+}
+----
+
+Das Laden, Compilieren und Linken der Shader im Shaderprogramm wird genauso wie in _Tutorial 01_ gemacht.
+
+=== Initialisierung von gemischten Vertex-Puffern
+
+Als nächstes der Vertex-Buffer erstellt. Diesmal werden nicht nur Koordinaten in den Buffer geschrieben, sondern auch Farben, und zwar abwechselnd (=_interleaved_) (siehe https://learnopengl.com/Getting-started/Hello-Triangle für eine Erläuterung).
+
+Es wird ein Rechteck gezeichnet, und zwar durch zwei Dreiecke. Dafür brauchen wir 4 Punkte. Der Vertexpuffer-Speicherblock soll am Ende so aussehen: `p0c0|p1c1|p2c2|p3c3`, wobei p für eine Position (vec3) und c für eine Farbe (vec3) steht. Die Daten werden zunächst in statischen Arrays separat definiert.
+
+[source,c++]
+----
+// set up vertex data (and buffer(s)) and configure vertex attributes
+// ------------------------------------------------------------------
+
+float vertices[] = {
+	 0.8f,  0.8f, 0.0f,  // top right
+	 0.8f, -0.8f, 0.0f,  // bottom right
+	-0.8f, -0.8f, 0.0f,  // bottom left
+	-0.8f,  0.8f, 0.0f   // top left
+};
+
+QColor vertexColors [] = {
+	QColor("#f6a509"),
+	QColor("#cb2dde"),
+	QColor("#0eeed1"),
+	QColor("#068918"),
+};
+----
+
+Die noch getrennten Daten werden jetzt in einen gemeinsamen Speicherbereich kopiert.
+
+[source,c++]
+----
+// create buffer for 2 interleaved attributes: position and color, 4 vertices, 3 floats each
+std::vector<float> vertexBufferData(2*4*3);
+// create new data buffer - the following memory copy stuff should
+// be placed in some convenience class in later tutorials
+// copy data in interleaved mode with pattern p0c0|p1c1|p2c2|p3c3
+float * buf = vertexBufferData.data();
+for (int v=0; v<4; ++v, buf += 6) {
+	// coordinates
+	buf[0] = vertices[3*v];
+	buf[1] = vertices[3*v+1];
+	buf[2] = vertices[3*v+2];
+	// colors
+	buf[3] = vertexColors[v].redF();
+	buf[4] = vertexColors[v].greenF();
+	buf[5] = vertexColors[v].blueF();
+}
+----
+
+Es gibt sicher viele andere Varianten, die Daten in der gewünschten Reihenfolge in den Speicherblock zu kopieren. 
+
+Es fällt vielleicht auf, dass der gemeinsame Pufferspeicher in einem lokal erstellen `std::vector` liegt. Das wirft die Frage nach der (benötigten) Lebensdauer für diese Pufferspeicher auf. 
+
+[source,c++]
+----
+// create a new buffer for the vertices and colors, interleaved storage
+m_vertexBufferObject = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+m_vertexBufferObject.create();
+m_vertexBufferObject.setUsagePattern(QOpenGLBuffer::StaticDraw);
+m_vertexBufferObject.bind();
+
+// now copy buffer data over: first argument pointer to data, second argument: size in bytes
+m_vertexBufferObject.allocate(vertexBufferData.data(), vertexBufferData.size()*sizeof(float) );
+----
+
+Im letzten Aufruf wird der Pufferspeicher tatsächlich _kopiert_. Der Aufruf zu `allocate()` ist sowohl Speicherreservierung im OpenGL-Puffer, als auch Kopieren der Daten (wie mit `memcpy`).
+
+Danach wird der Vector `vertexBufferData` nicht mehr benötigt, oder könnte sogar für weitere Puffer verwendet und verändert werden. 
+
+=== Element-/Indexpuffer
+In ähnlicher Weise wird nun der Elementpuffer erstellt, allerdings gibt es eine OpenGL-Besonderheit zu beachten:
+[IMPORTANT]
+====
+Das _Vertex Array Object_ verwaltet nicht nur die Attribute, sondern auch gebundene Puffer. Daher muss das VAO _vor_ dem Elementpuffer gebunden werden, um dann den Zustand korrekt zu speichern.
+====
+
+Deshalb wird nun zuerst das VAO erstellt und gebunden (kann man auch ganz am Anfang machen)
+
+[source,c++]
+----
+// create and bind Vertex Array Object - must be bound *before* the element buffer is bound,
+// because the VAO remembers and manages element buffers as well
+m_vao.create();
+m_vao.bind();
+----
+
+und dann erst der Elementpuffer erzeugt:
+
+[source,c++]
+----
+unsigned int indices[] = {  // note that we start from 0!
+	0, 1, 3,   // first triangle
+	1, 2, 3    // second triangle
+};
+
+// create a new buffer for the indexes
+m_indexBufferObject = QOpenGLBuffer(QOpenGLBuffer::IndexBuffer); // Mind: use 'IndexBuffer' here
+m_indexBufferObject.create();
+m_indexBufferObject.setUsagePattern(QOpenGLBuffer::StaticDraw);
+m_indexBufferObject.bind();
+m_indexBufferObject.allocate(indices, sizeof(indices) );
+----
+
+Qt (und auch OpenGL) unterscheidet nicht zwischen Pufferobjekten für verschiedene Aufgaben. Erst beim Binden des Puffers an den OpenGL Kontext (beispielsweise durch den Aufruf `glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)`) wird die Verwendung des Puffers festgelegt.
+
+In Qt muss man die Art des Puffers als Construktor-Argument übergeben, wobei `QOpenGLBuffer::VertexBuffer` der Standard ist. Für den Index-/Elementpuffer muss man `QOpenGLBuffer::IndexBuffer` übergeben. Der eigentliche Pufferinhalt wird wieder beim Aufruf von `allocate()` kopiert.
+
+=== Attribute im gemischten Vertexarray
+
+Bei der Verwendung gemischter Vertexarrays (mehrer Attribute je Vertex) muss man dem Shaderprogramm die Speicherstruktur und die Abbildung der Attribute angeben (zur Erläuterung siehe wiederum https://learnopengl.com/Getting-started/Hello-Triangle[Hello-Triangle Tutorial]).
+
+Die Syntax von `QOpenGLShaderProgram::setAttributeBuffer` entspricht im wesentlichen dem nativen OpenGL-Aufruf `glVertexAttribPointer`:
+
+[source,c++]
+----
+// stride = number of bytes for one vertex (with all its attributes) = 3+3 floats = 6*4 = 24 Bytes
+int stride = 6*sizeof(float);
+
+// layout location 0 - vec3 with coordinates
+m_program->enableAttributeArray(0);
+m_program->setAttributeBuffer(0, GL_FLOAT, 0, 3, stride);
+
+// layout location 1 - vec3 with colors
+m_program->enableAttributeArray(1);
+int colorOffset = 3*sizeof(float);
+m_program->setAttributeBuffer(1, GL_FLOAT, colorOffset, 3, stride);
+----
+
+
+[NOTE]
+====
+Wie gesagt, für die korrekte Komposition des VAO es ist lediglich die Reihenfolge des Bindens und der `setAttributeBuffer()`-Aufrufe wichtig. Man könnte also auch die Puffer erst erstellen und befüllen und zum Schluss die folgenden Aufrufe in der geforderten Reihenfolge schreiben:
+
+[source,c++]
+----
+m_vao.bind(); // VAO binden
+// Puffer binden und Daten kopieren
+m_vertexBufferObject.bind(); 
+m_vertexBufferObject.allocate(vertexBufferData.data(), vertexBufferData.size()*sizeof(float) );
+m_indexBufferObject.bind();
+m_indexBufferObject.allocate(indices, sizeof(indices) );
+// Attribute setzen
+m_program->setAttributeBuffer(...)
+----
+
+In ähnlicher Art und Weise werden Bufferdaten auch aktualisiert (wird noch in einem späteren Tutorial besprochen).
+====
+
+=== Freigabe der Puffer
+
+Bei der Freigabe der Puffer ist die Reihenfolge wichtig. Damit sich das VAO den Zustand des eingebundenden Elementpuffers merkt, darf man diesen _nicht vor_ Freigabe des VAO freigeben. Am Besten man gibt nur Vertexbuffer und VAO frei, und auch das nur, wenn es notwendig ist. Es wird im Beispiel auch nur der Vollständigkeithalber gemacht.
+
+[source,c++]
+----
+// Release (unbind) all
+m_vertexBufferObject.release();
+m_vao.release();
+----
+
+[TIP]
+====
+Explizites Freigeben von VBO oder VAO ist eigentlich nur notwendig, wenn man mit verschiedenen VAOs arbeitet und/oder verschiedenen Shadern. Dann sollte man auf Zustand im aktuellen OpenGL-Kontext achten und bewusst OpenGL-Objekte einbinden und freigeben.
+====
+
+=== Rendern
+
+Das eigentliche Zeichnen erfolgt in der `paintGL()` Funktion, welche fast genauso aussieht wie die `TriangleWindow::render()` Funktion aus _Tutorial 01_.
+
+[source,c++]
+----
+void RectangleWindow::paintGL() {
+	// set the background color = clear color
+	glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	// use our shader program
+	m_program->bind();
+	// bind the vertex array object, which in turn binds the vertex buffer object and
+	// sets the attribute buffer in the OpenGL context
+	m_vao.bind();
+	// For old Intel drivers you may need to explicitely re-bind the index buffer, because
+	// these drivers do not remember the binding-state of the index/element-buffer in the VAO
+	//	m_indexBufferObject.bind();
+
+	// now draw the two triangles via index drawing
+	// - GL_TRIANGLES - draw individual triangles via elements
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+	// finally release VAO again (not really necessary, just for completeness)
+	m_vao.release();
+}
+----
+
+Das Anpassen des Viewports (OpenGL-Aufruf `glViewport()`) kann entfallen, da das bereits in der Basisklasse gemacht wurde. 
+
+Dann folgen eigentlich die üblichen 4 Schritte:
+
+. Shaderprogramm binden
+. Vertex Array Objekt binden (und damit Binden des Vertex- und Elementpuffers, und setzen der Attribut-Zeiger)
+. Rendern, diesmal mit `glDrawElements` statt `glDrawArrays`, und
+. freigeben des VAO (damit danach weitere Objekte gezeichnet werden können).
+
+[CAUTION]
+====
+Bei einigen älteren Intel-Treibern wurde der Zustand des eingebundenen Elementpuffers noch nicht korrekt im VAO gespeichert und wiederhergestellt. Daher musste man den Index-/Elementpuffer vor dem Zeichnen immer nochmal explizit einbinden (siehe auskommentierter Quelltext).
+
+Bei aktuellen Treibern scheint das aber kein Problem mehr zu sein (zumindest nicht unter Ubuntu).
+====
+
+== Zusammenfassung
+
+Das `QOpenGLWindow` ist im Modus `QOpenGLWindow::NoPartialUpdate` eigentlich vergleichbar mit unserem minimalistischen `OpenGLWindow` aus _Tutorial 01_. Etwas Overhead ist vorhanden, allerdings sollte der in realen Anwendungen keine Rolle spielen. Es spricht also eigentlich nichts dagegen, direkt mit dem `QOpenGLWindow` anzufangen. 
+
+Wenn man aber die zusätzlichen Funktionen (QPainter-Zeichnen, Buffer-Blenden etc.) von `QOpenGLWindow` nicht braucht, kann man auch mit dem schlanken `OpenGLWindow` aus _Tutorial 01_ weitermachen.
+
+Wie man nun ein solches QWindow-basiertes (natives) OpenGL-Fenster in eine Widgets-Anwendung integriert bekommt, beschreibt _Tutorial 03_.
