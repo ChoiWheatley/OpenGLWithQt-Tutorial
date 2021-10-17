@@ -463,4 +463,5 @@ RESOURCES += \
 	Tutorial_01.qrc
 
 DISTFILES += \
-    glm/CMakeLists.txt
+    glm/CMakeLists.txt \
+    펭귄 글씨 input.jpg

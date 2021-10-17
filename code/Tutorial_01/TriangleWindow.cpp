@@ -15,6 +15,7 @@ License    : BSD License,
 #include <QDebug>
 #include <QColor>
 #include <QTimer>
+#include <QImage>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -52,6 +53,14 @@ void TriangleWindow::initialize() {
     QObject::connect(timer, &QTimer::timeout, this, &TriangleWindow::requestUpdate);
     timer->start(10);
 
+    // load image and bind it to the texture
+    QImage img;
+    if (!img.load(":/penguin.jpg")) {
+        qWarning("ERROR, IMG FILE LOAD FAILED");
+    }
+    m_texture = new QOpenGLTexture(img.mirrored());
+
+
 	m_program = new QOpenGLShaderProgram();
 
 	// read the shader programs from the resource
@@ -69,18 +78,19 @@ void TriangleWindow::initialize() {
 	// ------------------------------------------------------------------
 
 	float vertices[] = {
-        0.8f, 0.8f, 0.0f,   // top right
-        0.8f, -0.8f, 0.0f,  // bottom right
-        -0.8f, -0.8f, 0.0f, // bottom left
-        -0.8f, 0.8f, 0.0f   // top left
+        // positions            // colors               // texture coords
+        0.8f, 0.8f, 0.0f,       1.0f, 0.0f, 0.0f,       1.0f, 1.0f,         // top right
+        0.8f, -0.8f, 0.0f,      0.0f, 1.0f, 0.0f,       1.0f, 0.0f,         // bottom right
+        -0.8f, -0.8f, 0.0f,     0.0f, 0.0f, 1.0f,       0.0f, 0.0f,         // bottom left
+        -0.8f, 0.8f, 0.0f,      1.0f, 1.0f, 0.0f,       0.0f, 1.0f          // top left
 	};
 
-    QColor vertexColors[] = {
-        QColor(0xf6a509) ,
-        QColor(0xcb2dde),
-        QColor(0x0eeed1),
-        QColor(0x068918),
-    };
+    // QColor vertexColors[] = {
+        // QColor(0xf6a509) ,
+        // QColor(0xcb2dde),
+        // QColor(0x0eeed1),
+        // QColor(0x068918),
+    // };
 
 
     // The still separate data is now copied to a common storage area
@@ -88,24 +98,6 @@ void TriangleWindow::initialize() {
     // 0 + 4*n 번째 인덱스 = 버텍스 좌표
     // 1 + 4*n 번째 인덱스 = 색상 값
     // ----------------------------------------------------------------
-
-    // Create buffer for 2 interleaved attributes: position and color,
-    // _4 vertices, 3 floats each
-    std::vector<float> vertexBufferData(2*4*3);
-    // Create new data buffer
-    // Copy data in interleaved mode with pattern
-    // p0c0 | p1c1 | p2c2 | p3c3
-    float *buf = vertexBufferData.data();
-    for (int v=0; v<4; ++v, buf += 6) {
-        // coordinates
-        buf[0] = vertices[3*v];
-        buf[1] = vertices[3*v+1];
-        buf[2] = vertices[3*v+2];
-        // colors
-        buf[3] = vertexColors[v].redF();
-        buf[4] = vertexColors[v].greenF();
-        buf[5] = vertexColors[v].blueF();
-    }
 
     // create a new buffer for the vertices and colors, in a interleaved manner
     m_vbo = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);      // create VBO
@@ -115,8 +107,8 @@ void TriangleWindow::initialize() {
     m_vbo.bind();    // Set it active in the context, so that we can write to it
     // int bufSize = sizeof(vertices) = 9*sizeof(float) = 9*4=36bytes
     // static array with 9 floats(3x3 vectors) is first defined.
-    m_vbo.allocate(vertexBufferData.data(),
-                   vertexBufferData.size() * sizeof(float));      // Copy data into buffer
+    m_vbo.allocate(vertices,
+                   sizeof(vertices) * sizeof(float));      // Copy data into buffer
 
     // Initialize the VAO to record and remember subsequent attribute associations with
     // _generated vertex buffers
@@ -148,7 +140,9 @@ void TriangleWindow::initialize() {
     // _specify the memory structure and the mapping of the attributes to the shader
     // _program
     // ---------------------------------------------------------------------------
-    int stride = 6 * sizeof(float);             // Number of bytes for one vertex
+    int stride = 8 * sizeof(float);             // Number of bytes for one vertex
+    int colorOffset = 3 * sizeof(float);
+    int textureOffset = 6 * sizeof(float);
     // layout location 0 - vec3 with coordinates
     m_program->enableAttributeArray(0);
     m_program->setAttributeBuffer(0             // location is equal to 0
@@ -158,8 +152,10 @@ void TriangleWindow::initialize() {
                                   , stride);    // stride: vertices are densely packed in the value array
     // layout location 1 - vec3 with colors
     m_program->enableAttributeArray(1);
-    int colorOffset = 3*sizeof(float);
     m_program->setAttributeBuffer(1, GL_FLOAT, colorOffset, 3, stride);
+    // layout location 2 - vec2 with textures
+    m_program->enableAttributeArray(2);
+    m_program->setAttributeBuffer(2, GL_FLOAT, textureOffset, 2, stride);
 
 	// Release (unbind) all
     // NOTICE: the ORDER of binding and unbinding is crucial
@@ -215,6 +211,7 @@ void TriangleWindow::render() {
 
 
     // Now draw the two triangles via index drawing
+    m_texture->bind();
     glDrawElements(GL_TRIANGLES         // mode
                    , 6                  // count
                    , GL_UNSIGNED_INT    // type

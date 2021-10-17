@@ -15,6 +15,7 @@ License    : BSD License,
 #include <QOpenGLVertexArrayObject>
 #include <QOpenGLBuffer>
 #include <QOpenGLShaderProgram>
+#include <QOpenGLTexture>
 
 #include "OpenGLWindow.h"
 
@@ -41,6 +42,9 @@ private:
 
 	// Holds the compiled shader programs.
 	QOpenGLShaderProgram		*m_program;
+
+    // texture and image
+    QOpenGLTexture              *m_texture;
 };
 
 #endif // TriangleWindow_H
