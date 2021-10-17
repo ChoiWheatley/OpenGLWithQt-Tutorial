@@ -21,6 +21,19 @@ License    : BSD License,
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+QList< glm::vec3 > cubePositions = {
+    glm::vec3( 0.0f,  0.0f,  0.0f),
+    glm::vec3( 2.0f,  5.0f, -15.0f),
+    glm::vec3(-1.5f, -2.2f, -2.5f),
+    glm::vec3(-3.8f, -2.0f, -12.3f),
+    glm::vec3( 2.4f, -0.4f, -3.5f),
+    glm::vec3(-1.7f,  3.0f, -7.5f),
+    glm::vec3( 1.3f, -2.0f, -2.5f),
+    glm::vec3( 1.5f,  2.0f, -2.5f),
+    glm::vec3( 1.5f,  0.2f, -1.5f),
+    glm::vec3(-1.3f,  1.0f, -1.5f)
+};
+
 TriangleWindow::TriangleWindow() :
 	m_program(nullptr)
 {
@@ -37,7 +50,7 @@ TriangleWindow::~TriangleWindow() {
 
     m_vao.destroy();
     m_vbo.destroy();
-    m_ibo.destroy();
+    // m_ibo.destroy();
     delete m_program;
 
 }
@@ -77,27 +90,70 @@ void TriangleWindow::initialize() {
 	// set up vertex data (and buffer(s)) and configure vertex attributes
 	// ------------------------------------------------------------------
 
-	float vertices[] = {
-        // positions            // colors               // texture coords
-        0.8f, 0.8f, 0.0f,       1.0f, 0.0f, 0.0f,       1.0f, 1.0f,         // top right
-        0.8f, -0.8f, 0.0f,      0.0f, 1.0f, 0.0f,       1.0f, 0.0f,         // bottom right
-        -0.8f, -0.8f, 0.0f,     0.0f, 0.0f, 1.0f,       0.0f, 0.0f,         // bottom left
-        -0.8f, 0.8f, 0.0f,      1.0f, 1.0f, 0.0f,       0.0f, 1.0f          // top left
-	};
+    float vertices[] = {
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
 
-    // QColor vertexColors[] = {
-        // QColor(0xf6a509) ,
-        // QColor(0xcb2dde),
-        // QColor(0x0eeed1),
-        // QColor(0x068918),
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+    };
+    // float vertices[] = {
+        // // positions                  // texture coords
+        // 0.8f, 0.8f, 0.0f,             1.0f, 1.0f,         // top right
+        // 0.8f, -0.8f, 0.0f,            1.0f, 0.0f,         // bottom right
+        // -0.8f, -0.8f, 0.0f,           0.0f, 0.0f,         // bottom left
+        // -0.8f, 0.8f, 0.0f,            0.0f, 1.0f          // top left
     // };
-
-
     // The still separate data is now copied to a common storage area
     // VBO 안에 interleaved 형태로 저장을 할 것임.
     // 0 + 4*n 번째 인덱스 = 버텍스 좌표
     // 1 + 4*n 번째 인덱스 = 색상 값
     // ----------------------------------------------------------------
+
+    // Initialize the VAO to record and remember subsequent attribute associations with
+    // _generated vertex buffers
+    m_vao.create();     // create underlying opengl obj
+    // NOTICE: VAO manages not only the attributes, but also bound buffers.
+    //         Therefore, the VAO must be bound `before` the element buffer in order
+    //         to store the state correctly
+    m_vao.bind();       // sets the VAO current to the opengl context so it monitors
+                        // attribute assignments
 
     // create a new buffer for the vertices and colors, in a interleaved manner
     m_vbo = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);      // create VBO
@@ -110,27 +166,20 @@ void TriangleWindow::initialize() {
     m_vbo.allocate(vertices,
                    sizeof(vertices) * sizeof(float));      // Copy data into buffer
 
-    // Initialize the VAO to record and remember subsequent attribute associations with
-    // _generated vertex buffers
-    m_vao.create();     // create underlying opengl obj
-    // NOTICE: VAO manages not only the attributes, but also bound buffers.
-    //         Therefore, the VAO must be bound `before` the element buffer in order
-    //         to store the state correctly
-    m_vao.bind();       // sets the VAO current to the opengl context so it monitors
-                        // attribute assignments
 
 
     // Element Buffer
     // -------------------------------------------------------------------------
-    unsigned int indices[] = {
-        0, 1, 3,    // first triangle
-        1, 2, 3     // second triangle
-    };
-    m_ibo = QOpenGLBuffer(QOpenGLBuffer::IndexBuffer);
-    m_ibo.create();
-    m_ibo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-    m_ibo.bind();
-    m_ibo.allocate(indices, sizeof(indices));
+    // unsigned int indices[] = {
+        // 0, 1, 2,
+        // 3, 4, 5,
+        // 6, 7, 8
+    // };
+    // m_ibo = QOpenGLBuffer(QOpenGLBuffer::IndexBuffer);
+    // m_ibo.create();
+    // m_ibo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+    // m_ibo.bind();
+    // m_ibo.allocate(indices, sizeof(indices));
 
 
 
@@ -140,9 +189,8 @@ void TriangleWindow::initialize() {
     // _specify the memory structure and the mapping of the attributes to the shader
     // _program
     // ---------------------------------------------------------------------------
-    int stride = 8 * sizeof(float);             // Number of bytes for one vertex
-    int colorOffset = 3 * sizeof(float);
-    int textureOffset = 6 * sizeof(float);
+    int stride = 5 * sizeof(float);             // Number of bytes for one vertex
+    int textureOffset = 3 * sizeof(float);
     // layout location 0 - vec3 with coordinates
     m_program->enableAttributeArray(0);
     m_program->setAttributeBuffer(0             // location is equal to 0
@@ -150,17 +198,15 @@ void TriangleWindow::initialize() {
                                   , 0           // offset: in the currently bound vertex buffer
                                   , 3           // tuple_size: the number components per index
                                   , stride);    // stride: vertices are densely packed in the value array
-    // layout location 1 - vec3 with colors
+    // layout location 1 - vec2 with textures
     m_program->enableAttributeArray(1);
-    m_program->setAttributeBuffer(1, GL_FLOAT, colorOffset, 3, stride);
-    // layout location 2 - vec2 with textures
-    m_program->enableAttributeArray(2);
-    m_program->setAttributeBuffer(2, GL_FLOAT, textureOffset, 2, stride);
+    m_program->setAttributeBuffer(1, GL_FLOAT, textureOffset, 2, stride);
 
 	// Release (unbind) all
     // NOTICE: the ORDER of binding and unbinding is crucial
     m_vbo.release();
     m_vao.release();
+    // m_ibo.release();
 }
 
 
@@ -176,8 +222,9 @@ void TriangleWindow::render() {
     // set the background color = clear color
     // As long as the background color does not change, you could also move this call to
     // _initialization
+    glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
     // Let us make vertices Transform!
@@ -185,9 +232,15 @@ void TriangleWindow::render() {
     glm::mat4 view = glm::mat4(1.0f);       // view matrix
     glm::mat4 proj;                         // projection matrix
     // combine those matrices, multiplying each transformations one by one, right to left
-    model = glm::rotate(model, glm::radians(static_cast<float>(frame)), glm::vec3(1.0f,0.0f,0.0f));
+    // model = glm::rotate(model, glm::radians(50.0f), glm::vec3(0.5f,1.0f,0.0f));
     // view matrix does exactly oppsite than we are thinking
-    view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
+    const float radius = 10.0f;
+    float camX = sin(glm::radians((float)frame)) * radius;
+    float camZ = cos(glm::radians((float)frame)) * radius;
+    view = glm::lookAt(glm::vec3(camX, 0.0f, camZ)
+                       , glm::vec3(0.0f, 0.0f, 0.0f)
+                       , glm::vec3(0.0f, 1.0f, 0.0f)
+                       );
     // We want to use perspect projection for our scene so we'll declare the projection matrix like this
     proj = glm::perspective(glm::radians(45.0f)                     // FOV of frustum
                             , 800.0f / 600.0f                       // aspect ratio
@@ -199,7 +252,7 @@ void TriangleWindow::render() {
     m_program->bind();
     // bind the vao, which in turn binds the vbo and sets the attribute buffer in the opengl context
     m_vao.bind();
-    m_ibo.bind();
+    // m_ibo.bind();
 
     // Get their uniform location and set matrix (using glm::value_ptr)
     int model_loc = glGetUniformLocation(m_program->programId(), "model");
@@ -212,10 +265,21 @@ void TriangleWindow::render() {
 
     // Now draw the two triangles via index drawing
     m_texture->bind();
-    glDrawElements(GL_TRIANGLES         // mode
-                   , 6                  // count
-                   , GL_UNSIGNED_INT    // type
-                   , nullptr);          // indices
+    // glDelwElements() 함수는 Index Buffer Object의 인덱스를 사용하여 그림을 그린다.
+    // glDrawElements(GL_TRIANGLES         // mode
+                   // , 36                  // count
+                   // , GL_UNSIGNED_INT    // type
+                   // , nullptr);          // indices
+
+    for (unsigned int i = 0; i < cubePositions.size(); i++) {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, cubePositions[i]);
+        float angle = 20.0f * i;
+        model = glm::rotate(model, glm::radians((float)angle), glm::vec3(1.0f, 0.3f, 0.5f));
+
+        glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm::value_ptr(model));
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+    }
 
     // Finally, release(=unbind) vao again
     m_vao.release();
