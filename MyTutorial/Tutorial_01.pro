@@ -31,9 +31,11 @@ SOURCES += \
 		main.cpp \
 		OpenGLWindow.cpp \
 		TriangleWindow.cpp \
-		mousehandler.cpp
+		mousehandler.cpp \
+		mytransform.cpp
 
 HEADERS += \
+		Camera.h \
 		OpenGLWindow.h \
 		TriangleWindow.h \
 		Vertices.h \
@@ -455,7 +457,8 @@ HEADERS += \
 		glm/vec3.hpp \
 		glm/vec4.hpp \
 		glm/vector_relational.hpp \
-		mousehandler.h
+		mousehandler.h \
+		mytransform.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

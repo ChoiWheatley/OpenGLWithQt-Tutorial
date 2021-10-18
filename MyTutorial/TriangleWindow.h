@@ -19,15 +19,13 @@ License    : BSD License,
 
 #include "OpenGLWindow.h"
 #include "mousehandler.h"
+#include "Camera.h"
+#include "mytransform.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/type_ptr.hpp> // glm::mat4 변수를 배열 포인터로 변환하는 `value_ptr()` 함수
 
-/*	This is the window that shows the triangle.
-	We derive from our OpenGLWindow base class and implement the
-	virtual initialize() and render() functions.
-*/
 class TriangleWindow : public OpenGLWindow {
 public:
 	TriangleWindow();

@@ -197,9 +197,9 @@ void TriangleWindow::render() {
 
     for (unsigned int i = 0; i < cubePositions.size(); i++) {
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, cubePositions[i]);
+        model = MyTransform::translate(model, cubePositions[i]);
         float angle = 20.0f * i;
-        model = glm::rotate(model, glm::radians((float)angle), glm::vec3(1.0f, 0.3f, 0.5f));
+        model = MyTransform::rotate(model, glm::radians((float)angle), glm::vec3(1.0f, 0.3f, 0.5f));
 
         glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm::value_ptr(model));
         glDrawArrays(GL_TRIANGLES, 0, 36);
