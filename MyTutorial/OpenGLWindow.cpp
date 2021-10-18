@@ -47,7 +47,16 @@ bool OpenGLWindow::event(QEvent *event) {
 
 // The window (or part of it) is now visible and should be updated
 void OpenGLWindow::exposeEvent(QExposeEvent * /*event*/) {
-	renderNow(); // simply redirect call to renderNow()
+    renderNow(); // simply redirect call to renderNow()
+}
+
+void OpenGLWindow::resizeEvent(QResizeEvent *event)
+{
+    QWindow::resizeEvent(event);
+    if(m_context == nullptr) {
+        renderNow();
+    }
+    resizeGL(width(), height());
 }
 
 

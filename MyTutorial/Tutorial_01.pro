@@ -30,11 +30,13 @@ SOURCES += \
 		glm/detail/glm.cpp \
 		main.cpp \
 		OpenGLWindow.cpp \
-		TriangleWindow.cpp
+		TriangleWindow.cpp \
+		mousehandler.cpp
 
 HEADERS += \
 		OpenGLWindow.h \
 		TriangleWindow.h \
+		Vertices.h \
 		glm/common.hpp \
 		glm/detail/_features.hpp \
 		glm/detail/_fixes.hpp \
@@ -452,7 +454,8 @@ HEADERS += \
 		glm/vec2.hpp \
 		glm/vec3.hpp \
 		glm/vec4.hpp \
-		glm/vector_relational.hpp
+		glm/vector_relational.hpp \
+		mousehandler.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

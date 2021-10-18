@@ -28,14 +28,16 @@ public:
 
     virtual void render() = 0;      // from QOpenGLFunctions
     virtual void initialize() = 0;  // from QOpenGLFunctions
+    virtual void resizeGL(int width, int height) {Q_UNUSED(width) Q_UNUSED(height)}
 
 public slots:
 	void renderLater();
 	void renderNow();
 
 protected:
-	bool event(QEvent *event) Q_DECL_OVERRIDE;
-	void exposeEvent(QExposeEvent *event) Q_DECL_OVERRIDE;
+    bool event(QEvent *event) override;
+    void exposeEvent(QExposeEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 	QOpenGLContext *m_context;
 };

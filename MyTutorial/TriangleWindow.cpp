@@ -10,16 +10,13 @@ License    : BSD License,
 ************************************************************************************/
 
 #include "TriangleWindow.h"
+#include "Vertices.h"
 #include <vector>
 
 #include <QDebug>
 #include <QColor>
 #include <QTimer>
 #include <QImage>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 QList< glm::vec3 > cubePositions = {
     glm::vec3( 0.0f,  0.0f,  0.0f),
@@ -87,65 +84,6 @@ void TriangleWindow::initialize() {
 		qDebug() << "Shader linker errors:\n" << m_program->log();
 
 
-	// set up vertex data (and buffer(s)) and configure vertex attributes
-	// ------------------------------------------------------------------
-
-    float vertices[] = {
-        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-
-        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
-         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
-    };
-    // float vertices[] = {
-        // // positions                  // texture coords
-        // 0.8f, 0.8f, 0.0f,             1.0f, 1.0f,         // top right
-        // 0.8f, -0.8f, 0.0f,            1.0f, 0.0f,         // bottom right
-        // -0.8f, -0.8f, 0.0f,           0.0f, 0.0f,         // bottom left
-        // -0.8f, 0.8f, 0.0f,            0.0f, 1.0f          // top left
-    // };
-    // The still separate data is now copied to a common storage area
-    // VBO 안에 interleaved 형태로 저장을 할 것임.
-    // 0 + 4*n 번째 인덱스 = 버텍스 좌표
-    // 1 + 4*n 번째 인덱스 = 색상 값
-    // ----------------------------------------------------------------
-
     // Initialize the VAO to record and remember subsequent attribute associations with
     // _generated vertex buffers
     m_vao.create();     // create underlying opengl obj
@@ -165,22 +103,6 @@ void TriangleWindow::initialize() {
     // static array with 9 floats(3x3 vectors) is first defined.
     m_vbo.allocate(vertices,
                    sizeof(vertices) * sizeof(float));      // Copy data into buffer
-
-
-
-    // Element Buffer
-    // -------------------------------------------------------------------------
-    // unsigned int indices[] = {
-        // 0, 1, 2,
-        // 3, 4, 5,
-        // 6, 7, 8
-    // };
-    // m_ibo = QOpenGLBuffer(QOpenGLBuffer::IndexBuffer);
-    // m_ibo.create();
-    // m_ibo.setUsagePattern(QOpenGLBuffer::StaticDraw);
-    // m_ibo.bind();
-    // m_ibo.allocate(indices, sizeof(indices));
-
 
 
 
@@ -214,6 +136,12 @@ void TriangleWindow::render() {
     // This function is called for every frame to be rendered on screen
     // _the the window content is first rendered
     // ------------------------------------------------------------------
+
+    // Check if any keys have been pressed
+    if (m_inputEventReceived) {
+        processInput();
+    }
+
     static int frame = 0;
 
     const qreal retinaScale = devicePixelRatio();       // needed for Macs with retina display
@@ -227,23 +155,19 @@ void TriangleWindow::render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
-    // Let us make vertices Transform!
-    glm::mat4 model = glm::mat4(1.0f);      // model matrix
-    glm::mat4 view = glm::mat4(1.0f);       // view matrix
-    glm::mat4 proj;                         // projection matrix
     // combine those matrices, multiplying each transformations one by one, right to left
     // model = glm::rotate(model, glm::radians(50.0f), glm::vec3(0.5f,1.0f,0.0f));
     // view matrix does exactly oppsite than we are thinking
     const float radius = 10.0f;
     float camX = sin(glm::radians((float)frame)) * radius;
     float camZ = cos(glm::radians((float)frame)) * radius;
-    view = glm::lookAt(glm::vec3(camX, 0.0f, camZ)
+    m_view = glm::lookAt(glm::vec3(camX, 0.0f, camZ)
                        , glm::vec3(0.0f, 0.0f, 0.0f)
                        , glm::vec3(0.0f, 1.0f, 0.0f)
                        );
     // We want to use perspect projection for our scene so we'll declare the projection matrix like this
-    proj = glm::perspective(glm::radians(45.0f)                     // FOV of frustum
-                            , 800.0f / 600.0f                       // aspect ratio
+    m_proj = glm::perspective(glm::radians(45.0f)                     // FOV of frustum
+                            , (float)width() / (float)height()      // aspect ratio
                             , 0.1f                                  // near plane
                             , 100.0f);                              // far plane
 
@@ -258,9 +182,9 @@ void TriangleWindow::render() {
     int model_loc = glGetUniformLocation(m_program->programId(), "model");
     int view_loc = glGetUniformLocation(m_program->programId(), "view");
     int proj_loc = glGetUniformLocation(m_program->programId(), "proj");
-    glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(model_loc, 1, GL_FALSE, glm::value_ptr(m_model));
+    glUniformMatrix4fv(view_loc, 1, GL_FALSE, glm::value_ptr(m_view));
+    glUniformMatrix4fv(proj_loc, 1, GL_FALSE, glm::value_ptr(m_proj));
 
 
     // Now draw the two triangles via index drawing
@@ -285,5 +209,66 @@ void TriangleWindow::render() {
     m_vao.release();
 
     frame = (frame+1) % 360;
-    // qDebug() << frame;
+
+    checkInput();
+}
+
+void TriangleWindow::resizeGL(int width, int height)
+{
+    // 매 프레임 마다 render() 를 호출하고 있기 때문에 굳이 여기에서 m_proj 값을 변경할
+    // _이유가 없다.
+}
+
+void TriangleWindow::mousePressEvent(QMouseEvent *event)
+{
+    m_mouseHandler.mousePressEvent(event);
+    checkInput();
+}
+
+void TriangleWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+
+    m_mouseHandler.mouseReleaseEvent(event);
+    checkInput();
+}
+
+void TriangleWindow::wheelEvent(QWheelEvent *event)
+{
+    m_mouseHandler.wheelEvent(event);
+    checkInput();
+}
+
+void TriangleWindow::checkInput()
+// This function is called whenever any mouse event was issued
+// we test  if the current state of the key handler requires a scene update
+// (aka camera move) and if so, we just set a flag to do that upon next repaint
+// and we schedule a repaint
+{
+    // mouse L btn
+    if (m_mouseHandler.isButtonDown(Qt::LeftButton)) {
+        // has the mouse been moved?
+        if (m_mouseHandler.mouseDownPos() != QCursor::pos()) {
+            m_inputEventReceived = true;
+            // qDebug() << QCursor::pos();
+            renderLater();
+            return;
+        }
+    }
+
+    // wheel
+    if (m_mouseHandler.wheelDelta() != 0) {
+        m_inputEventReceived = true;
+        // qDebug() << m_mouseHandler.wheelDelta();
+        renderLater();
+        return;
+    }
+}
+
+void TriangleWindow::processInput()
+{
+}
+
+void TriangleWindow::updateWorldToViewMat()
+{
+
 }

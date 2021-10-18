@@ -13,26 +13,7 @@ License    : BSD License,
 
 #include <QApplication>
 #include <QSurfaceFormat>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 int main(int argc, char **argv) {
-    // testing glm
-    glm::vec4 vec(1.0f, 0.0f, 0.0f, 1.0f);
-    glm::mat4 trans_translate = glm::mat4(1.0f);
-    glm::mat4 trans_comp = glm::mat4(1.0f);
-    trans_translate = glm::translate(trans_translate, glm::vec3(1.0f, 1.0f, 0.0f));
-    trans_comp = glm::rotate(trans_translate, glm::radians(90.0f), glm::vec3(0.0,0.0,1.0));
-    trans_comp = glm::scale(trans_translate, glm::vec3(0.5,0.5,0.5));
-    glm::vec4 tmp1 = trans_translate * vec;
-    glm::vec4 tmp2 = trans_comp * vec;
-    qDebug() << tmp1.x << tmp1.y << tmp1.z << '\n';
-    qDebug() << tmp2.x << tmp2.y << tmp2.z << '\n';
-
-
-
-
 
 	QGuiApplication app(argc, argv);
 
