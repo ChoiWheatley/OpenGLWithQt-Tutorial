@@ -15,6 +15,8 @@ License    : BSD License,
 #include <QOpenGLShaderProgram>
 #include <QDateTime>
 #include <QDebug>
+#include <QScreen>
+#include <QGuiApplication>
 
 #define SHADER(x) m_shaderPrograms[x].shaderProgram()
 
@@ -139,6 +141,8 @@ void SceneView::paintGL() {
 	renderLater();
 #endif
 
+    // qDebug() << "world matrix\n" << m_transform.toMatrix();
+
 	checkInput();
 }
 
@@ -199,6 +203,7 @@ void SceneView::checkInput() {
     if (m_keyboardMouseHandler.mouseDownPos() != QCursor::pos()) {
         m_inputEventReceived = true;
         // qDebug() << "SceneView::checkInput() inputEventReceived: " << QCursor::pos() << m_keyboardMouseHandler.mouseDownPos();
+
         renderLater();
         return;
     }
@@ -230,9 +235,44 @@ void SceneView::processInput() {
         translation -= mouseDelta.x() * m_camera.right();
         translation += mouseDelta.y() * m_camera.up();
 
-        m_camera.translate(transSpeed * translation);		// finally, reset "WasPressed" key states
-		m_keyboardMouseHandler.clearWasPressedKeyStates();
-	}
+        m_camera.translate(transSpeed * translation);
+
+        m_keyboardMouseHandler.clearWasPressedKeyStates();      // finally, reset "WasPressed" key states
+    }
+
+    if (m_keyboardMouseHandler.buttonDown(Qt::RightButton))
+    // ArcBall rotation
+    // 1. screen coord -> camera coordinates in 정규직교좌표계
+    // 2. OP1, OP2 벡터 구하기
+    // 3. acos() 함수를 사용하여 각도 구하기
+    // 4. Rotation Axis는 cross(OP1, OP2) 를 사용하여 구할 수 있음.
+    {
+        float rotation_speed = 4.5f;
+        const static QVector3D vZero(0.f, 0.f, 1.f);
+
+        QPoint mouseDelta = m_keyboardMouseHandler.resetMouseDelta( QCursor::pos() );
+        QVector3D vDelta = get_arcball_vector(QPoint(0,0) - mouseDelta, width(), height());
+        // qDebug() << "vDelta = " << vDelta;
+
+        // QPoint startPoint = mapFromGlobal( QCursor::pos() );
+        // QPoint endPoint = m_keyboardMouseHandler.mouseDownPos();
+        // m_keyboardMouseHandler.resetMouseDelta(startPoint);
+        // if (!isPointInside(startPoint, width(), height()))
+            // return;
+
+        // QVector3D vStart = get_arcball_vector(startPoint, width(), height());
+        // QVector3D vEnd = get_arcball_vector(endPoint, width(), height());
+        // qDebug() << "vStart: " << vStart;
+        // qDebug() << "vEnd : " << vEnd;
+
+        float angle = acos( fmin(1.f
+                                , QVector3D::dotProduct(vZero, vDelta)) );
+        QVector3D axis_in_camera_coord( QVector3D::crossProduct(vZero, vDelta) );
+        m_transform.rotate(rotation_speed * angle, -axis_in_camera_coord);
+
+        m_keyboardMouseHandler.clearWasPressedKeyStates();      // finally, reset "WasPressed" key states
+    }
+
 	int wheelDelta = m_keyboardMouseHandler.resetWheelDelta();
 	if (wheelDelta != 0) {
 		float transSpeed = 8.f;
@@ -241,7 +281,7 @@ void SceneView::processInput() {
 		m_camera.translate(wheelDelta * transSpeed * m_camera.forward());
 	}
 
-	updateWorld2ViewMatrix();
+    updateWorld2ViewMatrix();
 	// not need to request update here, since we are called from paint anyway
 }
 
@@ -253,4 +293,38 @@ void SceneView::updateWorld2ViewMatrix() {
 	//   world space -> camera/eye -> camera view
 	//   camera view -> projection -> normalized device coordinates (NDC)
 	m_worldToView = m_projection * m_camera.toMatrix() * m_transform.toMatrix();
+}
+
+// screen 기준 x, y
+// x: [0, width()] -> [-1, 1]
+// y: [0, height()] -> [-1, 1]
+QVector3D get_arcball_vector(int x, int y, int width, int height)
+{
+    // if (x < 0) x = 0;
+    // if (y < 0) y = 0;
+    // if (width < x) x = width;
+    // if (height < y) y = height;
+
+    QVector3D P( (float)x    / width * 2
+                ,(float)(-y)    / height * 2
+                , 0.0f);
+
+
+    float OP_squared = P.x()*P.x() + P.y()*P.y();
+    if (OP_squared <= 1.f)
+        P.setZ(sqrt(1.f - OP_squared));
+    else
+        P.normalize();
+    return P;
+}
+
+QVector3D get_arcball_vector(const QPoint &point, int width, int height)
+{
+    return get_arcball_vector(point.x(), point.y(), width, height);
+}
+
+bool isPointInside(const QPoint &p, int width, int height)
+{
+    return (0 <= p.x() && p.x() <= width &&
+            0 <= p.y() && p.y() <= height);
 }

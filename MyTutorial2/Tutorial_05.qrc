@@ -4,5 +4,6 @@
         <file>shaders/simple.frag</file>
         <file>shaders/withWorldAndCamera.vert</file>
         <file>shaders/grid.frag</file>
+        <file>teapot.obj</file>
     </qresource>
 </RCC>

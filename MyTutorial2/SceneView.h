@@ -74,4 +74,8 @@ private:
 	GridObject					m_gridObject;
 };
 
+QVector3D get_arcball_vector(int x, int y, int width, int height);
+QVector3D get_arcball_vector(const QPoint &vDelta, int width, int height);
+bool isPointInside(const QPoint &p, int width, int height);
+
 #endif // SCENEVIEW_H

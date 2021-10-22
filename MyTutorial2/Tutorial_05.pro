@@ -50,7 +50,8 @@ SOURCES += \
 		ShaderProgram.cpp \
 		TestDialog.cpp \
 		Transform3D.cpp \
-		main.cpp
+		main.cpp \
+		teapot.cpp
 
 HEADERS += \
 	BoxMesh.h \
@@ -63,7 +64,8 @@ HEADERS += \
 	ShaderProgram.h \
 	TestDialog.h \
 	Transform3D.h \
-	Vertex.h
+	Vertex.h \
+	teapot.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -72,3 +74,6 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
 	Tutorial_05.qrc
+
+DISTFILES += \
+    teapot.obj
